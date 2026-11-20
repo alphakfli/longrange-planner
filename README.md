@@ -40,6 +40,9 @@ pip install -e ".[dev]"
 streamlit run app/streamlit_app.py
 ```
 
+**On Windows**, you can instead double-click `install_windows.bat` once, then `run_planner.bat` whenever you
+want to use it.
+
 The dashboard opens in your browser with sample data from a fictional cosmetics plant. Switch to
 **Upload Excel or CSV** in the sidebar to plan your own data.
 
