@@ -1,0 +1,15 @@
+key,value
+plan_start,2026-12
+horizon_months,18
+current_forecast,FC-2026-11
+previous_forecast,FC-2026-10
+frozen_months,3
+slushy_months,6
+default_service_level,0.95
+capacity_warning_pct,85.0
+capacity_critical_pct,100.0
+forecast_change_alert_pct,10.0
+eo_coverage_share,0.5
+max_weeks_of_coverage,26.0
+attainment_target_pct,95.0
+weeks_per_month,4.33

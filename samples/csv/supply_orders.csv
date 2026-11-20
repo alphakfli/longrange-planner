@@ -1,0 +1,9 @@
+order_id,item_id,order_type,status,due_month,qty
+PRD-1001,FG-1001,production,released,2026-12,60000
+PRD-1002,FG-1002,production,firm,2026-12,40000
+PRD-1003,FG-1004,production,firm,2026-12,30000
+PRD-1004,FG-1002,production,firm,2027-01,70000
+PRD-1005,FG-1006,production,firm,2027-02,15000
+PO-5001,PKG-3001,purchase,released,2027-01,150000
+PO-5002,FG-1005,purchase,released,2026-12,25000
+PO-5003,RAW-4001,purchase,released,2026-12,250

@@ -1,0 +1,4 @@
+work_center,name,shifts,hours_per_shift,working_days_per_month,efficiency_pct
+CMP,Compounding,1,8,21,90
+FL1,Filling line 1 (30 ml droppers),2,8,21,85
+FL2,Filling line 2 (jars and small bottles),2,8,21,85
