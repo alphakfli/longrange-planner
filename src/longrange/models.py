@@ -160,6 +160,8 @@ class Settings:
     max_weeks_of_coverage: float = 26.0    # coverage cap for items without shelf life
     attainment_target_pct: float = 95.0
     weeks_per_month: float = 4.33
+    bias_alert_pct: float = 10          # flag lag-1 bias over the last bias_months above this
+    bias_months: int = 3
     service_level_policy: str = "single"   # single = default_service_level for all; abc_xyz = use the matrix below
     abc_a_share: float = 0.80              # A items make up the first 80% of forecast value
     abc_b_share: float = 0.95              # B items the next 15%; C the rest

@@ -13,6 +13,19 @@ independent demand = max(forecast, sales orders)
 This is forecast consumption: sales orders in a month use up that month's forecast, so demand is not
 counted twice. Load forecast entries on the first of the month (any date in the month is read as that month).
 
+### Forecast bias, lag 1
+
+Accuracy is judged against the forecast that was used to plan the month, not a newer one. For each of the
+last `settings.bias_months` (3) months with actual sales, the planner takes the version whose first month is that
+month: FC-2026-10 for November, FC-2026-09 for October. Per item:
+
+```
+bias = Σ(forecast − actual) ÷ Σ actual        positive = over-forecast, negative = under-forecast
+```
+
+Items outside ±`settings.bias_alert_pct` (10%) get a Forecast bias alert. Bias is fixed at the source (the forecast),
+not covered with safety stock, which is sized for random error only.
+
 ### Demand events (promotions, launches, delistings)
 
 The `events` sheet sits on top of the consensus forecast instead of being typed into it, so each event stays visible

@@ -11,7 +11,7 @@ COLUMNS = ["severity", "category", "ref", "month", "message", "suggested_action"
 
 
 def build_alerts(*, items, inventory, load, planned_orders, action_messages, forecast_bridge, attainment_by_month,
-                 safety, issues, settings, events=None, event_impact=None) -> pd.DataFrame:
+                 safety, issues, settings, events=None, event_impact=None, bias_summary=None) -> pd.DataFrame:
     a: list[dict] = []
 
     def add(sev, cat, ref, month, msg, act):
@@ -105,6 +105,16 @@ def build_alerts(*, items, inventory, load, planned_orders, action_messages, for
                 add("Info", "Event", r.event_id, r.first_month,
                     f"Proposed {r.event_type} {r.event_id}{note}: {r.units:+,.0f} units from {label(r.first_month)}, not in the plan yet.",
                     "Tick 'Include proposed events' in the what-if to see the supply impact before S&OP decides.")
+
+    # Forecast bias (lag 1)
+    if bias_summary is not None and not bias_summary.empty:
+        for r in bias_summary[bias_summary["flag"]].itertuples():
+            act = ("Ask Demand Planning to re-base the forecast to recent actuals; the plan is building too much stock."
+                   if r.bias > 0 else
+                   "Ask Demand Planning whether demand has stepped up; check for stock-outs that hid demand.")
+            add("Warning", "Forecast bias", r.item_id, "",
+                f"{r.item_id} {names.get(r.item_id, '')}: {r.direction} by {r.bias:+.0%} over the last {r.months} months "
+                f"(lag 1, limit ±{settings.bias_alert_pct:.0f}%).", act)
 
     # Attainment
     if attainment_by_month is not None and not attainment_by_month.empty:

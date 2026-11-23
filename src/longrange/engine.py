@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from longrange.forecast.accuracy import accuracy_report, compare_versions
+from longrange.forecast.accuracy import accuracy_report, compare_versions, lag_accuracy
 from longrange.forecast.events import apply_events, event_summary
 from longrange.forecast.stats import ItemForecast, statistical_forecast
 from longrange.models import PlanningData, Settings
@@ -61,6 +61,8 @@ class PlanResult:
     events: pd.DataFrame
     segments: pd.DataFrame
     accuracy: pd.DataFrame
+    bias_detail: pd.DataFrame
+    bias_summary: pd.DataFrame
     stat_forecast: pd.DataFrame
     stat_details: list[ItemForecast]
     attainment_month: pd.DataFrame
@@ -159,6 +161,7 @@ def run_plan(data: PlanningData, version: str | None = None, scenario: Scenario 
     history = data.sales_history
     stat_fc, stat_details = statistical_forecast(history, start, H) if not history.empty else (pd.DataFrame(), [])
     acc = accuracy_report(data.forecast, history)
+    bias_det, bias_sum = lag_accuracy(data.forecast, history, int(s.bias_months), 1, s.bias_alert_pct / 100)
     sigmas: dict[str, tuple[float, str]] = {}
     if not acc.empty:
         good = acc[(acc["months"] >= 3) & acc["error_std"].notna()].sort_values("months")
@@ -198,11 +201,11 @@ def run_plan(data: PlanningData, version: str | None = None, scenario: Scenario 
     alerts = build_alerts(items=items, inventory=inv, load=load, planned_orders=net.planned_orders,
                           action_messages=net.action_messages, forecast_bridge=bridge, attainment_by_month=att_m,
                           safety=safety, issues=issues, settings=s, events=events,
-                          event_impact=impact)
+                          event_impact=impact, bias_summary=bias_sum)
     return PlanResult(settings=s, scenario=sc, months=months, version=current, previous_version=prev, items=items,
                       safety=safety, time_phased=net.time_phased, planned_orders=net.planned_orders,
                       action_messages=net.action_messages, supply=net.supply, capacity=load, capacity_detail=detail,
                       utilization=util, inventory=inv, forecast_bridge=bridge, baseline_forecast=baseline_fc,
-                      planned_forecast=fc, event_impact=impact, events=events, segments=segments, accuracy=acc, stat_forecast=stat_fc,
+                      planned_forecast=fc, event_impact=impact, events=events, segments=segments, accuracy=acc, bias_detail=bias_det, bias_summary=bias_sum, stat_forecast=stat_fc,
                       stat_details=stat_details, attainment_month=att_m, attainment_item=att_i, alerts=alerts,
                       issues=issues)

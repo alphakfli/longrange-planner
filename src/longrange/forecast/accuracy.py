@@ -63,3 +63,52 @@ def compare_versions_monthly(forecast: pd.DataFrame, new: str, old: str) -> pd.D
     f = forecast[forecast["version"].isin([new, old])]
     p = f.pivot_table(index="month", columns="version", values="qty", aggfunc="sum")
     return p.reset_index()
+
+
+def lag_accuracy(forecast: pd.DataFrame, history: pd.DataFrame, n_months: int = 3, lag: int = 1,
+                 threshold: float = 0.10) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Accuracy and bias of the forecast that was used to plan each month ("lag 1").
+
+    For each of the last ``n_months`` months with actual sales, take the version whose first
+    month is that month (lag 1 = the version made the month before), or whose first month is
+    ``lag - 1`` months earlier for longer lags. Returns (detail by item and month, summary by item).
+
+    Bias over the window = sum(forecast - actual) / sum(actual): positive = over-forecasting.
+    ``flag`` is True when |bias| is above ``threshold``.
+    """
+    from longrange.months import add_months
+
+    det_cols = ["item_id", "month", "version", "forecast", "actual", "error", "error_pct"]
+    sum_cols = ["item_id", "months", "forecast", "actual", "bias", "wmape", "flag", "direction"]
+    if forecast.empty or history.empty:
+        return pd.DataFrame(columns=det_cols), pd.DataFrame(columns=sum_cols)
+    starts = forecast.groupby("version")["month"].min()
+    act = history.groupby(["item_id", "month"])["qty"].sum()
+    fc = forecast.groupby(["version", "item_id", "month"])["qty"].sum()
+    hist_months = sorted(history["month"].unique())
+    rows = []
+    picked = 0
+    for m in reversed(hist_months):
+        made_for = add_months(m, -(lag - 1))
+        versions = sorted(starts[starts == made_for].index)
+        if not versions:
+            continue
+        ver = versions[-1]
+        for item in sorted(history.loc[history["month"] == m, "item_id"].unique()):
+            if (ver, item, m) not in fc.index:
+                continue
+            f, a = float(fc[(ver, item, m)]), float(act[(item, m)])
+            rows.append([item, m, ver, f, a, f - a, (f - a) / a if a else np.nan])
+        picked += 1
+        if picked == n_months:
+            break
+    detail = pd.DataFrame(rows, columns=det_cols).sort_values(["item_id", "month"]).reset_index(drop=True)
+    if detail.empty:
+        return detail, pd.DataFrame(columns=sum_cols)
+    out = []
+    for item, g in detail.groupby("item_id"):
+        b = bias(g["actual"], g["forecast"])
+        out.append([item, len(g), g["forecast"].sum(), g["actual"].sum(), b, wmape(g["actual"], g["forecast"]),
+                    abs(b) > threshold, "over-forecast" if b > 0 else "under-forecast" if b < 0 else "none"])
+    summary = pd.DataFrame(out, columns=sum_cols).sort_values("bias", key=abs, ascending=False).reset_index(drop=True)
+    return detail, summary

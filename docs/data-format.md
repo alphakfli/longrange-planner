@@ -167,6 +167,8 @@ Two columns, `key` and `value`. Any key left out takes its default.
 | `max_weeks_of_coverage` | 26.0 |
 | `attainment_target_pct` | 95.0 |
 | `weeks_per_month` | 4.33 |
+| `bias_alert_pct` | 10 |
+| `bias_months` | 3 |
 | `service_level_policy` | single |
 | `abc_a_share` | 0.8 |
 | `abc_b_share` | 0.95 |

@@ -88,3 +88,21 @@ def test_events_round_trip_through_template():
     loaded, issues = load_workbook(template_bytes(d))
     assert not [i for i in issues if i.severity == "error"]
     assert len(loaded.events) == 4 and set(loaded.events["status"]) == {"proposed"}
+
+
+def test_lag1_bias_uses_the_version_that_planned_each_month():
+    from longrange.forecast.accuracy import lag_accuracy
+    fc = pd.DataFrame([["V08", "A", "2026-09", 110], ["V08", "A", "2026-10", 999], ["V09", "A", "2026-10", 120],
+                       ["V10", "A", "2026-11", 90], ["V10", "A", "2026-12", 50]], columns=["version", "item_id", "month", "qty"])
+    hist = pd.DataFrame([["A", m, 100] for m in ["2026-08", "2026-09", "2026-10", "2026-11"]], columns=["item_id", "month", "qty"])
+    det, summ = lag_accuracy(fc, hist, 3, 1, .10)
+    assert list(det["version"]) == ["V08", "V09", "V10"]            # Oct judged on V09, not V08
+    assert summ.loc[0, "bias"] == (110 + 120 + 90 - 300) / 300 and summ.loc[0, "flag"] == False  # noqa: E712
+
+
+def test_sample_flags_bias_on_retinol_and_eye_serum():
+    r = run_plan(build_sample())
+    flagged = set(r.bias_summary.loc[r.bias_summary["flag"], "item_id"])
+    assert flagged == {"FG-1003", "FG-1006"}
+    assert (r.alerts["category"] == "Forecast bias").sum() == 2
+    assert r.summary()["alerts_critical"] == 6 and round(r.summary()["peak_load_pct"]) == 130

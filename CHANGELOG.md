@@ -10,6 +10,9 @@
 - Forecast tab: event impact chart and table, plan demand line. Inventory tab: segment matrix, Pareto chart and
   safety stock comparison. New Excel sheets and a PDF events table.
 - Warning when a delisting leaves projected stock behind.
+- KPIs tab: lag-1 forecast bias over the last 3 months (each month judged on the version that
+  planned it), with a chart, a month-by-month table and a Forecast bias alert outside ±10%.
+  Settings `bias_alert_pct` and `bias_months`. Sample data gets two archived versions.
 - Sample data: four proposed events.
 
 ## 0.1.0 (2026-11-20)

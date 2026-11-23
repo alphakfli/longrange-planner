@@ -145,6 +145,13 @@ def excel_report(r: PlanResult) -> bytes:
         acc["wmape"] *= 100
         acc["bias"] *= 100
         _sheet(wb, "Forecast accuracy", acc, number_formats={"wmape": '0.0"%"', "bias": '0.0"%"'})
+    if not r.bias_summary.empty:
+        _sheet(wb, "Bias last months (lag 1)", r.bias_summary,
+               number_formats={"bias": "+0.0%;-0.0%", "wmape": "0.0%", "forecast": "#,##0", "actual": "#,##0"})
+        det = r.bias_detail.copy()
+        det["month"] = det["month"].map(label)
+        _sheet(wb, "Bias by month (lag 1)", det,
+               number_formats={"error_pct": "+0.0%;-0.0%", "forecast": "#,##0", "actual": "#,##0", "error": "+#,##0;-#,##0"})
     if not r.stat_forecast.empty:
         st = r.stat_forecast.pivot_table(index="item_id", columns="month", values="qty").reset_index()
         st.columns = [label(c) if c != "item_id" else c for c in st.columns]

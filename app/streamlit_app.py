@@ -60,7 +60,7 @@ with st.sidebar:
     issues = []
     if src == "Sample data":
         data = _sample()
-        st.caption("Northfield Skincare: a fictional cosmetics plant with 6 finished goods, 3 work centers and 2 forecast versions.")
+        st.caption("Northfield Skincare: a fictional cosmetics plant with 6 finished goods, 3 work centers, 2 current forecast versions and 2 archived ones for accuracy.")
     else:
         up = st.file_uploader("One .xlsx workbook, or CSV files named items.csv, forecast.csv …",
                               type=["xlsx", "xlsm", "csv"], accept_multiple_files=True)
@@ -74,6 +74,9 @@ with st.sidebar:
             st.error(f"{len(errors)} error(s) in the data. See the Data check tab.")
 
     versions = data.forecast_versions()
+    if data.settings.plan_start and not data.forecast.empty:   # hide archived versions with no future months
+        future = data.forecast.loc[data.forecast["month"] >= data.settings.plan_start, "version"].unique()
+        versions = [v for v in versions if v in future] or versions
     if not versions:
         st.error("No forecast versions found.")
         st.stop()
@@ -423,6 +426,44 @@ with tabs[5]:
 
 # ---------- KPIs ----------
 with tabs[6]:
+    st.subheader(f"Forecast bias, last {settings.bias_months} months (lag 1)")
+    bs, bd = r.bias_summary, r.bias_detail
+    if bs.empty:
+        st.info("Needs actual sales for recent months and the forecast version that planned each month "
+                "(e.g. FC-2026-10 for November). Load your earlier versions to see bias.")
+    else:
+        lim = settings.bias_alert_pct
+        st.caption(f"Each month is judged against the version used to plan it: the one made the month before. "
+                   f"Bias = Σ(forecast − actual) ÷ Σ actual. Positive = over-forecast (excess, E&O), negative = "
+                   f"under-forecast (shortages). Flag outside ±{lim:.0f}%.")
+        order = bs["item_id"].tolist()
+        fig = go.Figure(go.Bar(x=order, y=bs["bias"] * 100,
+                               marker_color=[RED if f else ("#5DB4C6" if b < 0 else ACCENT) for f, b in zip(bs["flag"], bs["bias"], strict=True)],
+                               text=[f"{b:+.1%}" for b in bs["bias"]], textposition="outside",
+                               hovertemplate="%{x}: %{y:+.1f}%<extra></extra>"))
+        fig.add_hrect(y0=-lim, y1=lim, fillcolor="#E5F4E4", opacity=.5, line_width=0)
+        fig.add_hline(y=0, line_color=GREY)
+        ymax = max(lim * 1.6, float((bs["bias"].abs() * 100).max()) * 1.3)
+        st.plotly_chart(_fig_layout(fig, 300, yaxis_ticksuffix="%", yaxis_range=[-ymax, ymax], showlegend=False), width="stretch")
+        piv = bd.pivot_table(index="item_id", columns="month", values="error_pct", aggfunc="sum") * 100
+        piv.columns = [label(m) for m in piv.columns]
+        tbl = bs.set_index("item_id")[["bias", "wmape", "forecast", "actual", "flag"]].copy()
+        tbl[["bias", "wmape"]] *= 100
+        tbl = piv.join(tbl).loc[order].reset_index()
+        cfg = {c: st.column_config.NumberColumn(c, format="%+.1f%%") for c in piv.columns}
+        cfg.update({"bias": st.column_config.NumberColumn(f"{settings.bias_months}-month bias", format="%+.1f%%"),
+                    "wmape": st.column_config.NumberColumn("WMAPE", format="%.1f%%"),
+                    "forecast": st.column_config.NumberColumn(format="localized"),
+                    "actual": st.column_config.NumberColumn(format="localized"),
+                    "flag": st.column_config.CheckboxColumn(f"outside ±{lim:.0f}%")})
+        st.dataframe(tbl, hide_index=True, width="stretch", column_config=cfg)
+        st.caption("Month columns = that month's error % against its lag-1 version. One big month can be a one-off "
+                   "or a stock-out; the same sign every month is bias to fix at the source.")
+        with st.expander("Which version planned each month"):
+            st.dataframe(bd.assign(month=bd["month"].map(label), error_pct=bd["error_pct"] * 100), hide_index=True,
+                         width="stretch", column_config={"error_pct": st.column_config.NumberColumn("error %", format="%+.1f%%")})
+
+    st.subheader("Plan attainment")
     if r.attainment_month.empty:
         st.info("Add production_actuals (planned vs actual by item and month) to see attainment.")
     else:

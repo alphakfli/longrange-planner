@@ -128,6 +128,19 @@ def build_sample() -> PlanningData:
         forecast_version("FC-2026-11", PLAN_START, {"FG-1002": .88}),
         columns=["version", "item_id", "month", "qty"])
 
+    # Archived versions, keeping only the months now in the past, so lag-1 accuracy covers Sep-Nov 2026.
+    # Built from actuals with a bias per item: FG-1003 runs under (demand growing), FG-1006 over.
+    lean = {"FG-1001": (-.04, -.06), "FG-1002": (.03, -.02), "FG-1003": (-.09, -.11),
+            "FG-1004": (.02, .01), "FG-1005": (-.01, .02), "FG-1006": (.24, .22)}
+    actual = sales_history.set_index(["item_id", "month"])["qty"]
+    archived = []
+    for name, months in (("FC-2026-08", ["2026-09", "2026-10"]), ("FC-2026-09", ["2026-10", "2026-11"])):
+        for item, (b_sep, b_oct) in lean.items():
+            for m in months:
+                b = b_sep if m == "2026-09" else b_oct if m == "2026-10" else (b_sep + b_oct) / 2
+                archived.append([name, item, m, round(actual[(item, m)] * (1 + b), -2)])
+    forecast = pd.concat([pd.DataFrame(archived, columns=forecast.columns), forecast], ignore_index=True)
+
     sales_orders = pd.DataFrame([
         ["FG-1001", "2026-12", 41000, "Retail DC East"], ["FG-1002", "2026-12", 30000, "Retail DC East"],
         ["FG-1001", "2027-01", 35000, "E-commerce"], ["FG-1003", "2026-12", 19000, "Wholesale UK"],
