@@ -11,7 +11,7 @@ COLUMNS = ["severity", "category", "ref", "month", "message", "suggested_action"
 
 
 def build_alerts(*, items, inventory, load, planned_orders, action_messages, forecast_bridge, attainment_by_month,
-                 safety, issues, settings, events=None) -> pd.DataFrame:
+                 safety, issues, settings, events=None, event_impact=None) -> pd.DataFrame:
     a: list[dict] = []
 
     def add(sev, cat, ref, month, msg, act):
@@ -90,6 +90,17 @@ def build_alerts(*, items, inventory, load, planned_orders, action_messages, for
                     f"{r.event_id} {r.event_type}{note} starts in {label(r.first_month)}, inside the frozen zone: "
                     f"{r.units:+,.0f} units on orders that are already firm.",
                     "Check that firm orders and stock cover it, or agree a later start with Marketing.")
+            if r.applied and str(r.event_type).lower() == "delist" and event_impact is not None:
+                its = event_impact.loc[event_impact["event_id"] == r.event_id, "item_id"].unique()
+                for item in its:
+                    inv = inventory[(inventory["item_id"] == item) & (inventory["month"] == r.first_month)]
+                    if inv.empty or inv.iloc[0]["projected_available"] <= 0:
+                        continue
+                    left = inv.iloc[0]
+                    add("Warning", "Event", r.event_id, r.first_month,
+                        f"{r.event_id} delists {item} {names.get(item, '')} from {label(r.first_month)} with "
+                        f"{left['projected_available']:,.0f} units (${left['inventory_value']:,.0f}) still projected in stock.",
+                        "Cancel or reduce open orders, sell through before the date, or plan the write-off with Finance.")
             elif not r.applied and str(r.status).lower() == "proposed":
                 add("Info", "Event", r.event_id, r.first_month,
                     f"Proposed {r.event_type} {r.event_id}{note}: {r.units:+,.0f} units from {label(r.first_month)}, not in the plan yet.",

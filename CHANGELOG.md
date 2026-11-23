@@ -9,6 +9,7 @@
   `service_level_policy` setting to use it for calculated safety stock.
 - Forecast tab: event impact chart and table, plan demand line. Inventory tab: segment matrix, Pareto chart and
   safety stock comparison. New Excel sheets and a PDF events table.
+- Warning when a delisting leaves projected stock behind.
 - Sample data: four proposed events.
 
 ## 0.1.0 (2026-11-20)

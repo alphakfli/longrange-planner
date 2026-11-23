@@ -172,7 +172,7 @@ def run_plan(data: PlanningData, version: str | None = None, scenario: Scenario 
     levels = {r.item_id: (r.matrix_service_level, f"ABC/XYZ {r.segment}") for r in segments.itertuples()} \
         if policy == "abc_xyz" else {}
     safety = safety_stock_table(items, sigmas, s.default_service_level, s.weeks_per_month, levels)
-    segments = compare_with_safety(segments, safety)
+    segments = compare_with_safety(segments, safety, items, s.weeks_per_month)
     ss_map = dict(zip(safety["item_id"], safety["safety_stock"], strict=False))
 
     # Netting
@@ -197,7 +197,8 @@ def run_plan(data: PlanningData, version: str | None = None, scenario: Scenario 
             issues.append(f"{len(beyond)} supply order(s) are due after the horizon and were ignored.")
     alerts = build_alerts(items=items, inventory=inv, load=load, planned_orders=net.planned_orders,
                           action_messages=net.action_messages, forecast_bridge=bridge, attainment_by_month=att_m,
-                          safety=safety, issues=issues, settings=s, events=events)
+                          safety=safety, issues=issues, settings=s, events=events,
+                          event_impact=impact)
     return PlanResult(settings=s, scenario=sc, months=months, version=current, previous_version=prev, items=items,
                       safety=safety, time_phased=net.time_phased, planned_orders=net.planned_orders,
                       action_messages=net.action_messages, supply=net.supply, capacity=load, capacity_detail=detail,

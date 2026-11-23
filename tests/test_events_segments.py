@@ -74,7 +74,12 @@ def test_sample_events_are_proposed_and_flagged():
     assert (r.alerts["category"] == "Event").sum() == 4
     r2 = run_plan(d, scenario=Scenario(include_proposed_events=True))
     assert r2.events["applied"].all()
-    assert ((r2.alerts["category"] == "Event") & (r2.alerts["ref"] == "EV-04")).any()   # starts in frozen zone
+    ev = r2.alerts[r2.alerts["category"] == "Event"]
+    assert (ev["ref"] == "EV-04").any()                                 # starts in frozen zone
+    assert ev[ev["ref"] == "EV-03"]["message"].str.contains("still projected in stock").any()   # delisting
+    seg = r2.segments.set_index("item_id")
+    assert seg.loc["FG-1002", "matrix_safety_stock"] == round(r2.safety.set_index("item_id").loc["FG-1002", "safety_stock"]) \
+        or r2.safety.set_index("item_id").loc["FG-1002", "service_level"] != seg.loc["FG-1002", "matrix_service_level"]
     assert excel_report(r2)[:2] == b"PK" and pdf_report(r2)[:4] == b"%PDF"
 
 

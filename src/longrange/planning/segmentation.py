@@ -76,7 +76,8 @@ def classify(items: pd.DataFrame, forecast: dict[str, np.ndarray], history: pd.D
     return df[COLUMNS]
 
 
-def compare_with_safety(seg: pd.DataFrame, safety: pd.DataFrame) -> pd.DataFrame:
+def compare_with_safety(seg: pd.DataFrame, safety: pd.DataFrame, items: pd.DataFrame | None = None,
+                        weeks_per_month: float = 4.33) -> pd.DataFrame:
     """Add the safety stock in the plan and what the matrix service level would give."""
     if seg.empty:
         return seg
@@ -84,7 +85,11 @@ def compare_with_safety(seg: pd.DataFrame, safety: pd.DataFrame) -> pd.DataFrame
     out = seg.copy()
     out["plan_safety_stock"] = out["item_id"].map(s["safety_stock"])
     out["plan_method"] = out["item_id"].map(s["method"])
-    lt = out["item_id"].map(s["lead_time_months"]).fillna(0)
+    if items is not None:
+        it = items.set_index("item_id")
+        lt = out["item_id"].map((it["lead_time_weeks"].fillna(0) + it["safety_lead_time_weeks"].fillna(0)) / weeks_per_month)
+    else:
+        lt = out["item_id"].map(s["lead_time_months"])
     out["matrix_safety_stock"] = [round(safety_stock(sg, sl, lead)) if sg else None
-                                  for sg, sl, lead in zip(out["sigma"], out["matrix_service_level"], lt, strict=True)]
+                                  for sg, sl, lead in zip(out["sigma"], out["matrix_service_level"], lt.fillna(0), strict=True)]
     return out
