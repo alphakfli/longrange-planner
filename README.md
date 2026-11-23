@@ -46,7 +46,15 @@ want to use it.
 The dashboard opens in your browser with sample data from a fictional cosmetics plant. Switch to
 **Upload Excel or CSV** in the sidebar to plan your own data.
 
-### Put it online (Netlify or any static host)
+### Put it online: Streamlit Community Cloud (recommended, fast)
+
+1. Push this repository to GitHub.
+2. Sign in at [share.streamlit.io](https://share.streamlit.io) with GitHub and choose **Create app**.
+3. Pick the repository, branch `main`, and main file `app/streamlit_app.py`. It installs `app/requirements.txt`.
+
+Free apps sleep after 12 hours without visitors; open the link once before a demo to wake it.
+
+### Put it online without a server (Netlify or any static host)
 
 The dashboard can also run with no server at all: [stlite](https://github.com/whitphx/stlite) runs Python and
 Streamlit inside the visitor's browser, so uploaded files never leave their computer.
