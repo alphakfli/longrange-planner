@@ -152,6 +152,19 @@ def excel_report(r: PlanResult) -> bytes:
                               "holdout_wmape_pct": None if d.holdout_wmape is None else d.holdout_wmape * 100} for d in r.stat_details])
         _sheet(wb, "Statistical forecast", meth.merge(st, on="item_id", how="right"), number_formats={"holdout_wmape_pct": '0.0"%"'})
 
+    if not r.events.empty:
+        _sheet(wb, "Demand events", r.events, number_formats={"units": "#,##0"}, widths={"note": 48})
+        imp = r.event_impact.copy()
+        imp["month"] = imp["month"].map(label)
+        _sheet(wb, "Event impact by month", imp, number_formats={"baseline_qty": "#,##0", "event_qty": "+#,##0;-#,##0"},
+               widths={"note": 48})
+    if not r.segments.empty:
+        _sheet(wb, "ABC-XYZ segments", r.segments,
+               number_formats={"annual_value": "$#,##0", "value_share_pct": '0.0"%"', "cum_share_pct": '0.0"%"',
+                               "error_cv": "0.000", "matrix_service_level": "0.0%", "plan_safety_stock": "#,##0",
+                               "matrix_safety_stock": "#,##0", "avg_monthly_demand": "#,##0"},
+               widths={"plan_method": 48})
+
     # KPIs
     if not r.attainment_month.empty:
         _sheet(wb, "Attainment by month", r.attainment_month,

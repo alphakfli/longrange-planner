@@ -4,7 +4,8 @@ It is built so that the first plan shows real planning problems to work through:
 a filling line overloaded at the April sale peaks and in the December shutdown,
 raw materials whose lead time is too long for the first months, an eye serum with
 falling demand and excess stock (E&O risk), forecast changes between two monthly
-versions, and sales history whose peak moved from November to April.
+versions, sales history whose peak moved from November to April, and four proposed demand
+events (promotions, a new listing and a delisting) to try as what-ifs.
 """
 
 from __future__ import annotations
@@ -41,12 +42,12 @@ def build_sample() -> PlanningData:
     rng = np.random.default_rng(42)
     items = pd.DataFrame([
         # FG
-        ["FG-1001", "Niacinamide 10% Serum 30 ml", "FG", "make", "EA", 70000, 30000, None, 2, 1, 20000, 5000, 0, 1, 36, 2.10, "", "A"],
-        ["FG-1002", "Hyaluronic Acid 2% Serum 30 ml", "FG", "make", "EA", 52000, None, .95, 2, 1, 15000, 5000, 0, 1, 30, 2.40, "", "A"],
-        ["FG-1003", "Retinol 0.5% Serum 30 ml", "FG", "make", "EA", 8000, None, .95, 2, 1, 10000, 5000, 0, 1, 24, 3.20, "", "B"],
-        ["FG-1004", "Moisturizing Cream 100 ml", "FG", "make", "EA", 38000, 18000, None, 2, 1, 15000, 5000, 0, 1, 30, 2.90, "", "B"],
-        ["FG-1005", "Squalane Cleanser 50 ml", "FG", "buy", "EA", 30000, 15000, None, 6, 1, 25000, 5000, 0, 1, 30, 2.60, "NorthPak Contract Manufacturing", "B"],
-        ["FG-1006", "Peptide Eye Serum 15 ml", "FG", "make", "EA", 120000, 4000, None, 2, 1, 5000, 1000, 0, 1, 24, 3.80, "", "C"],
+        ["FG-1001", "Niacinamide 10% Serum 30 ml", "FG", "make", "EA", 70000, 30000, None, 2, 1, 20000, 5000, 0, 1, 36, 2.10, "", ""],
+        ["FG-1002", "Hyaluronic Acid 2% Serum 30 ml", "FG", "make", "EA", 52000, None, None, 2, 1, 15000, 5000, 0, 1, 30, 2.40, "", ""],
+        ["FG-1003", "Retinol 0.5% Serum 30 ml", "FG", "make", "EA", 8000, None, None, 2, 1, 10000, 5000, 0, 1, 24, 3.20, "", ""],
+        ["FG-1004", "Moisturizing Cream 100 ml", "FG", "make", "EA", 38000, 18000, None, 2, 1, 15000, 5000, 0, 1, 30, 2.90, "", ""],
+        ["FG-1005", "Squalane Cleanser 50 ml", "FG", "buy", "EA", 30000, 15000, None, 6, 1, 25000, 5000, 0, 1, 30, 2.60, "NorthPak Contract Manufacturing", ""],
+        ["FG-1006", "Peptide Eye Serum 15 ml", "FG", "make", "EA", 120000, 4000, None, 2, 1, 5000, 1000, 0, 1, 24, 3.80, "", ""],
         # Bulk (kg)
         ["BLK-2001", "Niacinamide serum bulk", "BULK", "make", "KG", 2600, 500, None, 1, 0, 2000, 1000, 6000, 2, 12, 18, "", ""],
         ["BLK-2002", "Hyaluronic serum bulk", "BULK", "make", "KG", 1900, 400, None, 1, 0, 2000, 1000, 6000, 2, 12, 22, "", ""],
@@ -152,7 +153,16 @@ def build_sample() -> PlanningData:
             act_rows.append([item, m, plan, round(actual, -2)])
     production_actuals = pd.DataFrame(act_rows, columns=["item_id", "month", "planned_qty", "actual_qty"])
 
+    # Demand events proposed by Marketing and Sales, not yet approved at S&OP (try them in the what-if).
+    events = pd.DataFrame([
+        ["EV-01", "FG-1001", "promo", "2027-03", "2027-04", 25, 0, "proposed", "Marketing: extend the spring sale into March"],
+        ["EV-02", "FG-1003", "launch", "2027-06", "2027-11", 0, 6000, "proposed", "Sales: new retailer listing"],
+        ["EV-03", "FG-1006", "delist", "2027-09", None, -100, 0, "proposed", "Portfolio review: phase-out candidate"],
+        ["EV-04", "FG-1002", "promo", "2027-01", "2027-01", 20, 0, "proposed", "E-commerce: January bundle"],
+    ], columns=["event_id", "item_id", "event_type", "start_month", "end_month", "lift_pct", "extra_qty", "status", "note"])
+
     settings = Settings(plan_start=PLAN_START, current_forecast="FC-2026-11", previous_forecast="FC-2026-10")
     return PlanningData(items=items, bom=bom, work_centers=work_centers, calendar=calendar, routings=routings,
                         forecast=forecast, sales_history=sales_history, sales_orders=sales_orders,
-                        supply_orders=supply_orders, production_actuals=production_actuals, settings=settings)
+                        supply_orders=supply_orders, production_actuals=production_actuals, events=events,
+                        settings=settings)

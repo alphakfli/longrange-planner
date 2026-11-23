@@ -16,14 +16,15 @@ and action messages. It runs on Excel or CSV data, so you can use it before, bes
 | --- | --- |
 | Forecast | Load every monthly forecast version; compare versions (forecast bridge); statistical baseline from sales history (moving average, seasonal naive, damped Holt, Holt-Winters, picked by holdout error); accuracy (WMAPE) and bias by item |
 | MPS / MRP | 18-month netting in monthly buckets: forecast consumed by sales orders, BOM explosion, lead-time offset, minimum order, order multiple, maximum order, lot accumulation, existing firm and released orders |
-| Safety stock | Use your own values, or calculate Z × σ(forecast error) × √(lead time + 1 review month) from a service level |
+| Demand events | Promotions, launches and delistings on top of the forecast (lift % or extra units); approved events are planned, proposed ones can be tried as a what-if |
+| Safety stock | Use your own values, or calculate Z × σ(forecast error) × √(lead time + 1 review month) from a service level, either one level for all or by ABC / XYZ segment |
 | Time fences | Frozen and slushy zones: existing orders in the frozen zone are never changed, only flagged |
 | Action messages | New planned orders, plus Cancel / Reduce suggestions for existing orders the new forecast no longer needs |
 | Capacity | Hours required vs available per work center and month, with calendars, efficiency and setup time; breakdown by item |
 | Inventory | Projected stock, weeks of coverage, inventory value, and E&O risk against shelf life |
 | KPIs | Net attainment, absolute attainment, capacity utilization |
 | Alerts | Shortages, below safety stock, late releases, capacity overloads, E&O risk, order changes, big forecast changes, attainment misses, data gaps; each with a suggested action |
-| What-if | Demand up or down, shifts per work center, move items to another line, outsource items; the whole plan recalculates instantly |
+| What-if | Demand up or down, include proposed events, shifts per work center, move items to another line, outsource items; the whole plan recalculates instantly |
 | Reports | Excel workbook with every view, and a PDF S&OP supply review pack |
 
 ## Quick start
@@ -117,7 +118,7 @@ Common ERP export headers such as `No.`, `Quantity`, `Forecast Date` and `Replen
 
 See [docs/planning-logic.md](docs/planning-logic.md) for formulas and assumptions. In short:
 
-1. **Demand:** independent demand per month is the larger of forecast and sales orders (forecast consumption).
+1. **Demand:** forecast plus approved demand events; independent demand per month is the larger of that and sales orders (forecast consumption).
 2. **Netting:** items are planned top-down by BOM level. Projected available = previous + receipts − gross requirement.
    When it would fall below safety stock, a planned order is created and sized by the lot rules.
 3. **Explosion:** each made item's orders create dependent demand for its components in the release month.

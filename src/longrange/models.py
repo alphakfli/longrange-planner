@@ -47,7 +47,7 @@ SCHEMA: dict[str, dict] = {
             _c("shelf_life_months", "number", default=0.0, help="Total shelf life; 0 = not tracked"),
             _c("unit_cost", "number", default=0.0, help="Standard cost per unit"),
             _c("vendor", default="", help="Supplier or contract manufacturer for bought items"),
-            _c("abc", default="", help="Optional ABC class"),
+            _c("abc", default="", help="Optional ABC class (A, B or C). Blank = calculated from forecast value"),
         ],
     },
     "bom": {
@@ -112,6 +112,22 @@ SCHEMA: dict[str, dict] = {
             _c("due_month", "month", required=True), _c("qty", "number", required=True),
         ],
     },
+    "events": {
+        "required": False,
+        "help": "Promotions, launches and delistings to lay on top of the forecast. "
+                "Approved events are in the plan; proposed events can be tried as a what-if.",
+        "columns": [
+            _c("event_id", required=True, help="Short code, e.g. EV-01"),
+            _c("item_id", required=True, help="Finished good, or ALL for every finished good"),
+            _c("event_type", default="promo", help="promo, launch, delist or other"),
+            _c("start_month", "month", required=True, help="First month affected"),
+            _c("end_month", "month", default=None, help="Last month affected. Blank = start month only (delist: to the end of the horizon)"),
+            _c("lift_pct", "number", default=0.0, help="Change to the forecast in percent: 25 = +25%, -100 = no demand (delist)"),
+            _c("extra_qty", "number", default=0.0, help="Units added per month on top of the forecast, e.g. a launch or a new listing"),
+            _c("status", default="approved", help="approved (in the plan) or proposed (what-if only)"),
+            _c("note", default="", help="Owner or reason, e.g. 'Marketing: spring sale extension'"),
+        ],
+    },
     "production_actuals": {
         "required": False,
         "help": "Planned vs actual production by item and month, for attainment KPIs.",
@@ -144,6 +160,20 @@ class Settings:
     max_weeks_of_coverage: float = 26.0    # coverage cap for items without shelf life
     attainment_target_pct: float = 95.0
     weeks_per_month: float = 4.33
+    service_level_policy: str = "single"   # single = default_service_level for all; abc_xyz = use the matrix below
+    abc_a_share: float = 0.80              # A items make up the first 80% of forecast value
+    abc_b_share: float = 0.95              # B items the next 15%; C the rest
+    xyz_x_max_cv: float = 0.10             # X: forecast error under 10% of average demand
+    xyz_y_max_cv: float = 0.25             # Y: 10-25%; Z above
+    sl_ax: float = 0.98
+    sl_ay: float = 0.97
+    sl_az: float = 0.95
+    sl_bx: float = 0.97
+    sl_by: float = 0.95
+    sl_bz: float = 0.93
+    sl_cx: float = 0.93
+    sl_cy: float = 0.92
+    sl_cz: float = 0.90
 
     @classmethod
     def from_table(cls, df: pd.DataFrame | None) -> Settings:
@@ -188,6 +218,7 @@ class PlanningData:
     sales_orders: pd.DataFrame = field(default_factory=lambda: empty_table("sales_orders"))
     supply_orders: pd.DataFrame = field(default_factory=lambda: empty_table("supply_orders"))
     production_actuals: pd.DataFrame = field(default_factory=lambda: empty_table("production_actuals"))
+    events: pd.DataFrame = field(default_factory=lambda: empty_table("events"))
     settings: Settings = field(default_factory=Settings)
 
     def table(self, name: str) -> pd.DataFrame:

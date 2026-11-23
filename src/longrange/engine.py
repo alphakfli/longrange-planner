@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from longrange.forecast.accuracy import accuracy_report, compare_versions
+from longrange.forecast.events import apply_events, event_summary
 from longrange.forecast.stats import ItemForecast, statistical_forecast
 from longrange.models import PlanningData, Settings
 from longrange.months import month_range, months_between
@@ -17,6 +18,7 @@ from longrange.planning.inventory import inventory_health
 from longrange.planning.kpi import attainment, utilization_summary
 from longrange.planning.netting import run_netting
 from longrange.planning.safety_stock import safety_stock_table
+from longrange.planning.segmentation import classify, compare_with_safety
 
 
 @dataclass
@@ -30,6 +32,9 @@ class Scenario:
     efficiency: dict[str, float] = field(default_factory=dict)     # work center -> efficiency %
     routing: dict[str, str] = field(default_factory=dict)          # item -> work center
     outsource: list[str] = field(default_factory=list)             # items switched to buy
+    include_proposed_events: bool = False                          # try proposed promos / launches
+    excluded_events: list[str] = field(default_factory=list)       # approved events left out
+    service_level_policy: str | None = None                        # override settings: single or abc_xyz
 
 
 @dataclass
@@ -50,6 +55,11 @@ class PlanResult:
     utilization: pd.DataFrame
     inventory: pd.DataFrame
     forecast_bridge: pd.DataFrame
+    baseline_forecast: pd.DataFrame
+    planned_forecast: pd.DataFrame
+    event_impact: pd.DataFrame
+    events: pd.DataFrame
+    segments: pd.DataFrame
     accuracy: pd.DataFrame
     stat_forecast: pd.DataFrame
     stat_details: list[ItemForecast]
@@ -131,9 +141,14 @@ def run_plan(data: PlanningData, version: str | None = None, scenario: Scenario 
         items.loc[items["item_id"] == item, "replenishment"] = "buy"
     bom = data.bom[~data.bom["parent_item"].isin(sc.outsource)]
 
-    # Demand
+    # Demand: consensus forecast x what-if factors, then promotions / launches / delistings
     fc = fc.copy()
     fc["qty"] = fc["qty"] * sc.demand_factor * fc["item_id"].map(sc.item_factors).fillna(1.0)
+    fg_items = items.loc[items["item_type"] == "FG", "item_id"].tolist()
+    baseline_fc = fc[["item_id", "month", "qty"]]
+    fc, impact = apply_events(baseline_fc, data.events, fg_items, months, sc.include_proposed_events,
+                              sc.excluded_events)
+    events = event_summary(impact, months, s.frozen_months)
     forecast = _series(fc, months)
     sales = _series(data.sales_orders, months)
     independent = {}
@@ -152,7 +167,12 @@ def run_plan(data: PlanningData, version: str | None = None, scenario: Scenario 
     for d in stat_details:
         if d.item_id not in sigmas and d.error_std:
             sigmas[d.item_id] = (float(d.error_std), f"statistical backtest error, {d.method}")
-    safety = safety_stock_table(items, sigmas, s.default_service_level, s.weeks_per_month)
+    segments = classify(items, forecast, history, sigmas, s)
+    policy = (sc.service_level_policy or s.service_level_policy or "single").lower()
+    levels = {r.item_id: (r.matrix_service_level, f"ABC/XYZ {r.segment}") for r in segments.itertuples()} \
+        if policy == "abc_xyz" else {}
+    safety = safety_stock_table(items, sigmas, s.default_service_level, s.weeks_per_month, levels)
+    segments = compare_with_safety(segments, safety)
     ss_map = dict(zip(safety["item_id"], safety["safety_stock"], strict=False))
 
     # Netting
@@ -177,10 +197,11 @@ def run_plan(data: PlanningData, version: str | None = None, scenario: Scenario 
             issues.append(f"{len(beyond)} supply order(s) are due after the horizon and were ignored.")
     alerts = build_alerts(items=items, inventory=inv, load=load, planned_orders=net.planned_orders,
                           action_messages=net.action_messages, forecast_bridge=bridge, attainment_by_month=att_m,
-                          safety=safety, issues=issues, settings=s)
+                          safety=safety, issues=issues, settings=s, events=events)
     return PlanResult(settings=s, scenario=sc, months=months, version=current, previous_version=prev, items=items,
                       safety=safety, time_phased=net.time_phased, planned_orders=net.planned_orders,
                       action_messages=net.action_messages, supply=net.supply, capacity=load, capacity_detail=detail,
-                      utilization=util, inventory=inv, forecast_bridge=bridge, accuracy=acc, stat_forecast=stat_fc,
+                      utilization=util, inventory=inv, forecast_bridge=bridge, baseline_forecast=baseline_fc,
+                      planned_forecast=fc, event_impact=impact, events=events, segments=segments, accuracy=acc, stat_forecast=stat_fc,
                       stat_details=stat_details, attainment_month=att_m, attainment_item=att_i, alerts=alerts,
                       issues=issues)

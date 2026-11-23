@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "longrange-planner"
-version = "0.1.0"
+version = "0.2.0"
 description = "Open-source long-term (18-month) production planning: forecast, MPS/MRP, capacity, inventory, alerts and S&OP reports."
 readme = "README.md"
 license = { text = "MIT" }

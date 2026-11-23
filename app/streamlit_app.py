@@ -85,8 +85,12 @@ with st.sidebar:
     horizon = st.slider("Horizon (months)", 6, 24, int(s0.horizon_months))
     frozen = st.slider("Frozen zone (months)", 0, 6, int(s0.frozen_months))
     service = st.slider("Service level for calculated safety stock", 0.80, 0.995, float(s0.default_service_level), 0.005, format="%.3f")
+    policies = {"single": "One level for all items", "abc_xyz": "By ABC / XYZ segment"}
+    policy = st.radio("Service level policy", list(policies), format_func=policies.get,
+                      index=list(policies).index(s0.service_level_policy if s0.service_level_policy in policies else "single"),
+                      help="By segment uses the matrix on the Inventory tab. A service level or safety stock given on the item always wins.")
     settings = replace(s0, horizon_months=horizon, frozen_months=frozen, slushy_months=max(frozen, s0.slushy_months),
-                       default_service_level=service, current_forecast=version)
+                       default_service_level=service, current_forecast=version, service_level_policy=policy)
 
     st.header("What-if")
     demand = st.slider("Demand change, all items", -30, 50, 0, 5, format="%d%%")
@@ -112,9 +116,22 @@ with st.sidebar:
     with st.expander("Outsource items"):
         outsource = st.multiselect("Buy these from a contract manufacturer instead",
                                    makes.loc[makes["item_type"] == "FG", "item_id"].tolist())
-    changed = demand or shifts or routing or outsource
+    ev = data.events
+    include_proposed, excluded = False, []
+    if not ev.empty:
+        with st.expander("Demand events", expanded=True):
+            proposed = ev[ev["status"].astype(str).str.lower() == "proposed"]
+            approved = ev[ev["status"].astype(str).str.lower() != "proposed"]
+            if len(proposed):
+                include_proposed = st.checkbox(f"Include proposed events ({len(proposed)})", False,
+                                               help="Promotions and launches Marketing or Sales have asked for, not yet approved at S&OP.")
+                st.caption(", ".join(f"{e.event_id} {e.event_type} {e.item_id}" for e in proposed.itertuples()))
+            if len(approved):
+                excluded = st.multiselect("Leave out approved events", approved["event_id"].tolist())
+    changed = demand or shifts or routing or outsource or include_proposed or excluded
     scen = Scenario(name="What-if" if changed else "Base plan", demand_factor=1 + demand / 100,
-                    shifts=shifts, routing=routing, outsource=outsource)
+                    shifts=shifts, routing=routing, outsource=outsource,
+                    include_proposed_events=include_proposed, excluded_events=excluded)
 
 try:
     r = run_plan(data, version=version, scenario=scen, settings=settings)
@@ -213,7 +230,33 @@ with tabs[2]:
         if show_stat and not stat.empty:
             sv = stat.groupby("month")["qty"].sum()
             fig.add_trace(go.Scatter(x=[label(m) for m in sv.index], y=sv.values, name="Statistical baseline", line=dict(color=GREEN, dash="dot")))
+        keep_items = items_fg if pick == "All finished goods" else [pick]
+        pf = r.planned_forecast[r.planned_forecast["item_id"].isin(keep_items)].groupby("month")["qty"].sum()
+        cur_h = cur[cur.index.isin(pf.index)]
+        if len(pf) and not np.allclose(pf.reindex(cur_h.index).fillna(0).values, cur_h.values):
+            fig.add_trace(go.Scatter(x=[label(m) for m in pf.index], y=pf.values, name="Plan demand (what-if + events)",
+                                     line=dict(color="#6B6FB5", width=2)))
         st.plotly_chart(_fig_layout(fig, 380, yaxis_title="units"), width="stretch")
+
+    st.subheader("Demand events")
+    if r.events.empty:
+        st.info("No events loaded. Add an 'events' sheet to plan promotions, launches and delistings on top of the forecast.")
+    else:
+        st.caption("Events sit on top of the consensus forecast: forecast × (1 + lift %) + extra units. "
+                   "Approved events are in the plan; proposed ones are shown here but only planned when you include them in the sidebar.")
+        imp = r.event_impact[r.event_impact["item_id"].isin(keep_items)]
+        if not imp.empty:
+            fig = go.Figure()
+            for i, (eid, g) in enumerate(imp.groupby("event_id", sort=False)):
+                gm = g.groupby("month")["event_qty"].sum().reindex(months, fill_value=0)
+                fig.add_trace(go.Bar(x=mlabels, y=gm.values, name=f"{eid}{'' if g['applied'].iloc[0] else ' (not in plan)'}",
+                                     marker_color=ITEM_COLORS[i % len(ITEM_COLORS)], opacity=1 if g["applied"].iloc[0] else .45))
+            st.plotly_chart(_fig_layout(fig, 260, barmode="relative", yaxis_title="units vs forecast"), width="stretch")
+        st.dataframe(r.events, hide_index=True, width="stretch",
+                     column_config={"applied": st.column_config.CheckboxColumn("in plan"),
+                                    "units": st.column_config.NumberColumn(format="%+d"),
+                                    "in_frozen_zone": st.column_config.CheckboxColumn("starts in frozen zone"),
+                                    "first_month": st.column_config.TextColumn("from"), "last_month": st.column_config.TextColumn("to")})
     st.subheader("Forecast bridge")
     if r.forecast_bridge.empty:
         st.info("Load a second forecast version to compare.")
@@ -335,6 +378,48 @@ with tabs[5]:
     st.dataframe(att, hide_index=True, width="stretch")
     with st.expander("Safety stock by item"):
         st.dataframe(r.safety, hide_index=True, width="stretch")
+
+    st.subheader("ABC / XYZ segments and service levels")
+    seg = r.segments
+    if seg.empty:
+        st.info("Segmentation needs finished goods with a forecast and unit cost.")
+    else:
+        st.caption(f"ABC by forecast value, next 12 months (A = first {settings.abc_a_share:.0%}, B = next "
+                   f"{settings.abc_b_share - settings.abc_a_share:.0%}). XYZ by forecast error ÷ average demand "
+                   f"(X ≤ {settings.xyz_x_max_cv:.0%}, Y ≤ {settings.xyz_y_max_cv:.0%}, Z above). "
+                   f"Policy now: **{policies[policy]}**.")
+        cm1, cm2 = st.columns([2, 3])
+        with cm1:
+            grid = [[getattr(settings, f"sl_{a.lower()}{x.lower()}") for x in "XYZ"] for a in "ABC"]
+            names = [[", ".join(seg.loc[seg["segment"] == a + x, "item_id"]) for x in "XYZ"] for a in "ABC"]
+            text = [[f"{grid[i][j]:.0%}<br><span style='font-size:10px'>{names[i][j]}</span>" for j in range(3)] for i in range(3)]
+            fig = go.Figure(go.Heatmap(z=grid, x=["X steady", "Y variable", "Z erratic"], y=["A high value", "B", "C low value"],
+                                       text=text, texttemplate="%{text}", colorscale=[[0, "#F4F7F6"], [1, "#9CCBD6"]],
+                                       showscale=False, hovertemplate="%{y} / %{x}: %{z:.0%}<extra></extra>"))
+            st.plotly_chart(_fig_layout(fig, 300, yaxis_autorange="reversed"), width="stretch")
+            st.caption("Target service level per segment, with the items in each cell.")
+        with cm2:
+            show = seg[["item_id", "abc_calculated", "abc", "error_cv", "xyz", "segment", "matrix_service_level",
+                        "plan_safety_stock", "matrix_safety_stock", "plan_method"]]
+            st.dataframe(show, hide_index=True, width="stretch",
+                         column_config={"abc_calculated": st.column_config.TextColumn("ABC calc"),
+                                        "abc": st.column_config.TextColumn("ABC used"),
+                                        "error_cv": st.column_config.NumberColumn("error CV", format="%.2f"),
+                                        "matrix_service_level": st.column_config.NumberColumn("segment SL", format="percent"),
+                                        "plan_safety_stock": st.column_config.NumberColumn("SS in plan", format="localized"),
+                                        "matrix_safety_stock": st.column_config.NumberColumn("SS at segment SL", format="localized"),
+                                        "plan_method": st.column_config.TextColumn("SS method")})
+            st.caption("ABC used = the class on the item if given, otherwise the calculated one. "
+                       "Compare 'SS in plan' with 'SS at segment SL' to find items with too much or too little buffer.")
+        with st.expander("Value ranking (Pareto)"):
+            fig = go.Figure()
+            fig.add_trace(go.Bar(x=seg["item_id"], y=seg["annual_value"], name="Forecast value, 12 months",
+                                 marker_color=[{"A": ACCENT, "B": "#5DB4C6", "C": GREY}[a] for a in seg["abc_calculated"]]))
+            fig.add_trace(go.Scatter(x=seg["item_id"], y=seg["cum_share_pct"], name="Cumulative share", yaxis="y2",
+                                     line=dict(color=AMBER)))
+            st.plotly_chart(_fig_layout(fig, 300, yaxis_tickprefix="$",
+                                        yaxis2=dict(overlaying="y", side="right", range=[0, 105], ticksuffix="%", showgrid=False)),
+                            width="stretch")
 
 # ---------- KPIs ----------
 with tabs[6]:

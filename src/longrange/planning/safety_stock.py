@@ -24,28 +24,36 @@ def safety_stock(sigma: float, service_level: float, lead_time_months: float, re
 
 
 def safety_stock_table(items: pd.DataFrame, sigmas: dict[str, tuple[float, str]], default_service_level: float,
-                       weeks_per_month: float) -> pd.DataFrame:
+                       weeks_per_month: float, levels: dict[str, tuple[float, str]] | None = None) -> pd.DataFrame:
     """One row per item: the safety stock used by the plan and where it came from.
 
     ``sigmas`` maps item_id -> (sigma, source description).
+    ``levels`` optionally maps item_id -> (service level, source), e.g. from the ABC/XYZ matrix.
+    A service level given on the item always wins.
     """
+    levels = levels or {}
     rows = []
     for _, it in items.iterrows():
         item = it["item_id"]
         given = it.get("safety_stock")
         sl = it.get("service_level")
-        sl = float(sl) if pd.notna(sl) and sl else default_service_level
+        if pd.notna(sl) and sl:
+            sl, sl_src = float(sl), "item"
+        elif item in levels:
+            sl, sl_src = levels[item]
+        else:
+            sl, sl_src = default_service_level, "settings default"
         lt_m = (float(it.get("lead_time_weeks") or 0) + float(it.get("safety_lead_time_weeks") or 0)) / weeks_per_month
         if pd.notna(given):
             rows.append({"item_id": item, "safety_stock": float(given), "method": "Given on item",
-                         "service_level": None, "sigma": None, "lead_time_months": round(lt_m, 2)})
+                         "service_level": None, "service_level_source": "", "sigma": None, "lead_time_months": round(lt_m, 2)})
             continue
         sigma, src = sigmas.get(item, (None, ""))
         if sigma and sigma > 0:
             ss = safety_stock(sigma, sl, lt_m)
             rows.append({"item_id": item, "safety_stock": round(ss), "method": f"Calculated ({src})",
-                         "service_level": sl, "sigma": round(sigma, 1), "lead_time_months": round(lt_m, 2)})
+                         "service_level": sl, "service_level_source": sl_src, "sigma": round(sigma, 1), "lead_time_months": round(lt_m, 2)})
         else:
             rows.append({"item_id": item, "safety_stock": 0.0, "method": "None (no safety stock or history)",
-                         "service_level": None, "sigma": None, "lead_time_months": round(lt_m, 2)})
+                         "service_level": None, "service_level_source": "", "sigma": None, "lead_time_months": round(lt_m, 2)})
     return pd.DataFrame(rows)

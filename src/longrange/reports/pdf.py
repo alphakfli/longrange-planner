@@ -228,6 +228,15 @@ def pdf_report(r: PlanResult, title: str = "S&OP supply review") -> bytes:
         story.append(Paragraph(f"{r.version} vs {r.previous_version}, over the months both versions cover.", SMALL))
     else:
         story.append(Paragraph("Only one forecast version is loaded, so there is nothing to compare.", BODY))
+    if not r.events.empty:
+        story.append(Spacer(1, 10))
+        story.append(Paragraph("Demand events: promotions, launches and delistings", H2))
+        rows = [["Event", "Type", "Status", "In plan", "From", "To", "Units", "Note"]]
+        for e in r.events.itertuples():
+            rows.append([e.event_id, e.event_type, e.status, "yes" if e.applied else "no", label(e.first_month),
+                         label(e.last_month), f"{e.units:+,.0f}", str(e.note)[:60]])
+        story.append(_table(rows, [0.8 * inch, 0.8 * inch, 0.9 * inch, 0.7 * inch, 0.8 * inch, 0.8 * inch, 1.0 * inch, 3.6 * inch]))
+        story.append(Paragraph("Proposed events are not in the plan until S&OP approves them.", SMALL))
     story.append(Spacer(1, 10))
     story.append(Paragraph("Plan attainment by month", H2))
     if not r.attainment_month.empty:

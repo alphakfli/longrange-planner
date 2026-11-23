@@ -27,7 +27,7 @@ One row per item: finished goods, bulk, packaging and raw materials.
 | `shelf_life_months` |  | `0.0` | Total shelf life; 0 = not tracked |
 | `unit_cost` |  | `0.0` | Standard cost per unit |
 | `vendor` |  | blank | Supplier or contract manufacturer for bought items |
-| `abc` |  | blank | Optional ABC class |
+| `abc` |  | blank | Optional ABC class (A, B or C). Blank = calculated from forecast value |
 
 ## bom
 
@@ -120,6 +120,22 @@ Existing production and purchase orders (scheduled receipts).
 | `due_month` | yes |  |  |
 | `qty` | yes |  |  |
 
+## events
+
+Promotions, launches and delistings to lay on top of the forecast. Approved events are in the plan; proposed events can be tried as a what-if.
+
+| Column | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `event_id` | yes |  | Short code, e.g. EV-01 |
+| `item_id` | yes |  | Finished good, or ALL for every finished good |
+| `event_type` |  | `promo` | promo, launch, delist or other |
+| `start_month` | yes |  | First month affected |
+| `end_month` |  | blank | Last month affected. Blank = start month only (delist: to the end of the horizon) |
+| `lift_pct` |  | `0.0` | Change to the forecast in percent: 25 = +25%, -100 = no demand (delist) |
+| `extra_qty` |  | `0.0` | Units added per month on top of the forecast, e.g. a launch or a new listing |
+| `status` |  | `approved` | approved (in the plan) or proposed (what-if only) |
+| `note` |  | blank | Owner or reason, e.g. 'Marketing: spring sale extension' |
+
 ## production_actuals
 
 Planned vs actual production by item and month, for attainment KPIs.
@@ -137,12 +153,12 @@ Two columns, `key` and `value`. Any key left out takes its default.
 
 | Key | Default |
 | --- | --- |
-| `plan_start` | nan |
-| `horizon_months` | 18.0 |
-| `current_forecast` | nan |
-| `previous_forecast` | nan |
-| `frozen_months` | 3.0 |
-| `slushy_months` | 6.0 |
+| `plan_start` | blank |
+| `horizon_months` | 18 |
+| `current_forecast` | blank |
+| `previous_forecast` | blank |
+| `frozen_months` | 3 |
+| `slushy_months` | 6 |
 | `default_service_level` | 0.95 |
 | `capacity_warning_pct` | 85.0 |
 | `capacity_critical_pct` | 100.0 |
@@ -151,3 +167,17 @@ Two columns, `key` and `value`. Any key left out takes its default.
 | `max_weeks_of_coverage` | 26.0 |
 | `attainment_target_pct` | 95.0 |
 | `weeks_per_month` | 4.33 |
+| `service_level_policy` | single |
+| `abc_a_share` | 0.8 |
+| `abc_b_share` | 0.95 |
+| `xyz_x_max_cv` | 0.1 |
+| `xyz_y_max_cv` | 0.25 |
+| `sl_ax` | 0.98 |
+| `sl_ay` | 0.97 |
+| `sl_az` | 0.95 |
+| `sl_bx` | 0.97 |
+| `sl_by` | 0.95 |
+| `sl_bz` | 0.93 |
+| `sl_cx` | 0.93 |
+| `sl_cy` | 0.92 |
+| `sl_cz` | 0.9 |

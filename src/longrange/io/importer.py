@@ -127,6 +127,20 @@ def _cross_checks(data: PlanningData, issues: list[ValidationIssue]) -> None:
             issues.append(ValidationIssue("warning", sheet, f"Unknown {col} (not in items, ignored): {', '.join(map(str, unknown[:10]))}."))
             data_table = df[df[col].isin(known)].reset_index(drop=True)
             setattr(data, sheet, data_table)
+    if not data.events.empty:
+        ev = data.events
+        ev["status"] = ev["status"].fillna("approved").astype(str).str.strip().str.lower()
+        ev["event_type"] = ev["event_type"].fillna("promo").astype(str).str.strip().str.lower()
+        unknown = sorted(set(ev["item_id"]) - known - {"ALL", "all"})
+        if unknown:
+            issues.append(ValidationIssue("warning", "events", f"Unknown item_id (not in items, ignored): {', '.join(map(str, unknown[:10]))}."))
+            data.events = ev[~ev["item_id"].isin(unknown)].reset_index(drop=True)
+        bad = ev[~ev["status"].isin(["approved", "proposed"])]
+        if len(bad):
+            issues.append(ValidationIssue("warning", "events", f"status must be approved or proposed; treated as approved for {', '.join(bad['event_id'].head(10))}."))
+        dup = ev["event_id"][ev["event_id"].duplicated()].unique()
+        if len(dup):
+            issues.append(ValidationIssue("warning", "events", f"Duplicate event_id: {', '.join(map(str, dup[:10]))}. Each row is still applied."))
     makes = items[items["replenishment"] == "make"]["item_id"]
     if not data.work_centers.empty:
         routed = set(data.routings["item_id"])

@@ -11,7 +11,7 @@ COLUMNS = ["severity", "category", "ref", "month", "message", "suggested_action"
 
 
 def build_alerts(*, items, inventory, load, planned_orders, action_messages, forecast_bridge, attainment_by_month,
-                 safety, issues, settings) -> pd.DataFrame:
+                 safety, issues, settings, events=None) -> pd.DataFrame:
     a: list[dict] = []
 
     def add(sev, cat, ref, month, msg, act):
@@ -80,6 +80,20 @@ def build_alerts(*, items, inventory, load, planned_orders, action_messages, for
                 add("Info", "Forecast change", r.item_id, "",
                     f"{r.item_id}: forecast {'up' if r.change > 0 else 'down'} {abs(r.change_pct):.0f}% vs previous version ({r.change:+,.0f}).",
                     "Ask Demand Planning for the reason; explain it in the S&OP bridge.")
+
+    # Demand events
+    if events is not None and not events.empty:
+        for r in events.itertuples():
+            note = f" ({r.note})" if r.note else ""
+            if r.applied and r.in_frozen_zone:
+                add("Warning", "Event", r.event_id, r.first_month,
+                    f"{r.event_id} {r.event_type}{note} starts in {label(r.first_month)}, inside the frozen zone: "
+                    f"{r.units:+,.0f} units on orders that are already firm.",
+                    "Check that firm orders and stock cover it, or agree a later start with Marketing.")
+            elif not r.applied and str(r.status).lower() == "proposed":
+                add("Info", "Event", r.event_id, r.first_month,
+                    f"Proposed {r.event_type} {r.event_id}{note}: {r.units:+,.0f} units from {label(r.first_month)}, not in the plan yet.",
+                    "Tick 'Include proposed events' in the what-if to see the supply impact before S&OP decides.")
 
     # Attainment
     if attainment_by_month is not None and not attainment_by_month.empty:

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 (2026-11-23)
+
+- Demand events: new optional `events` sheet for promotions, launches and delistings, applied on top of the
+  forecast. Approved events are planned; proposed events are shown with their impact and can be included as a
+  what-if. Alerts for proposed events and for applied events that start inside the frozen zone.
+- ABC / XYZ segmentation of finished goods (value and forecastability), a 3 × 3 service level matrix, and a
+  `service_level_policy` setting to use it for calculated safety stock.
+- Forecast tab: event impact chart and table, plan demand line. Inventory tab: segment matrix, Pareto chart and
+  safety stock comparison. New Excel sheets and a PDF events table.
+- Sample data: four proposed events.
+
 ## 0.1.0 (2026-11-20)
 
 First version.

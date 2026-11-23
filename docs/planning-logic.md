@@ -13,6 +13,25 @@ independent demand = max(forecast, sales orders)
 This is forecast consumption: sales orders in a month use up that month's forecast, so demand is not
 counted twice. Load forecast entries on the first of the month (any date in the month is read as that month).
 
+### Demand events (promotions, launches, delistings)
+
+The `events` sheet sits on top of the consensus forecast instead of being typed into it, so each event stays visible
+and can be switched on or off. For every month an event covers:
+
+```
+forecast with event = forecast × (1 + lift_pct / 100) + extra_qty      (never below 0)
+```
+
+- `promo`: a % lift for a few months, e.g. +25% in March and April.
+- `launch` or new listing: `extra_qty` units per month (works even where the forecast is 0).
+- `delist`: `lift_pct = -100`; a blank `end_month` runs to the end of the horizon, so you see the stock left behind.
+- `item_id = ALL` applies the event to every finished good. Events are applied in sheet order.
+
+`status = approved` events are in the plan. `status = proposed` events are shown with their units and an Info alert,
+but planned only when the what-if "Include proposed events" is ticked. This mirrors S&OP: Marketing and Sales
+propose, the S&OP meeting decides with the supply impact in front of it. An applied event that starts inside the
+frozen zone raises a Warning, because orders there are already firm and supply cannot react.
+
 The forecast version comes from `settings.current_forecast`, or the last version by name. The previous version
 (`settings.previous_forecast`, or the one before current) is used for the forecast bridge and alerts.
 
@@ -29,6 +48,31 @@ SS = Z × σ × √(lead time in months + 1)
   versions compared with `sales_history` where at least 3 months overlap, otherwise from the statistical
   forecast's holdout errors.
 - **+1** is the review period: the plan is refreshed monthly, so stock must also cover one month of uncertainty.
+
+### Service level by ABC / XYZ segment
+
+Finished goods are segmented two ways:
+
+- **ABC by value**: next 12 months of forecast × `unit_cost`, ranked. Items up to 80% of cumulative value are A,
+  up to 95% are B, the rest C (`settings.abc_a_share`, `abc_b_share`). The top item is always A. A class typed
+  in `items.abc` overrides the calculated one.
+- **XYZ by predictability**: coefficient of variation of forecast error, σ ÷ average monthly demand of the last 12
+  months. X ≤ 10%, Y ≤ 25%, Z above (`settings.xyz_x_max_cv`, `xyz_y_max_cv`). Items with no error history use the
+  variability of their sales instead.
+
+With `settings.service_level_policy = abc_xyz` (or the dashboard switch), calculated safety stock uses the target
+level of the item's segment from `settings.sl_ax` … `sl_cz`:
+
+| | X steady | Y variable | Z erratic |
+| --- | --- | --- | --- |
+| **A** high value | 98% | 97% | 95% |
+| **B** | 97% | 95% | 93% |
+| **C** low value | 93% | 92% | 90% |
+
+The logic: an A item's stockout costs the most revenue, so it gets the most protection; a Z item needs far more
+stock for each extra point of service, so the level steps down from X to Z. Service level or safety stock typed
+on the item always wins. The Inventory tab also shows, for every finished good, the safety stock the segment level
+would give next to the one in the plan, which shows items that carry too much or too little buffer.
 
 ## 3. Netting (MPS and MRP)
 
