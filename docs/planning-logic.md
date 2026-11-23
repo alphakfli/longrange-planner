@@ -13,6 +13,18 @@ independent demand = max(forecast, sales orders)
 This is forecast consumption: sales orders in a month use up that month's forecast, so demand is not
 counted twice. Load forecast entries on the first of the month (any date in the month is read as that month).
 
+### Stock-out months
+
+Recorded sales in a month when an item was out of stock show only what supply allowed. With `stockout_days`
+on the sales history row, the planner estimates true demand from the selling days:
+
+```
+estimated demand = recorded × days in month ÷ (days in month − stockout days)      (capped at 3×)
+```
+
+The estimate replaces the recorded quantity for the statistical baseline, accuracy, bias, safety stock sigma
+and ABC/XYZ. Above the cap, the month raises a Warning to agree a manual estimate.
+
 ### Forecast bias, lag 1
 
 Accuracy is judged against the forecast that was used to plan the month, not a newer one. For each of the

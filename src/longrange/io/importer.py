@@ -127,6 +127,14 @@ def _cross_checks(data: PlanningData, issues: list[ValidationIssue]) -> None:
             issues.append(ValidationIssue("warning", sheet, f"Unknown {col} (not in items, ignored): {', '.join(map(str, unknown[:10]))}."))
             data_table = df[df[col].isin(known)].reset_index(drop=True)
             setattr(data, sheet, data_table)
+    sh = data.sales_history
+    if not sh.empty and "stockout_days" in sh.columns:
+        sod = pd.to_numeric(sh["stockout_days"], errors="coerce").fillna(0)
+        bad = sh[(sod < 0) | (sod > 31)]
+        if len(bad):
+            issues.append(ValidationIssue("warning", "sales_history",
+                                          f"stockout_days must be 0 to 31; {len(bad)} row(s) set to 0."))
+            sh.loc[bad.index, "stockout_days"] = 0.0
     if not data.events.empty:
         ev = data.events
         ev["status"] = ev["status"].fillna("approved").astype(str).str.strip().str.lower()

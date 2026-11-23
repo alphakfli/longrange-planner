@@ -95,6 +95,7 @@ Actual sales or shipments by item and month. Used for statistical forecast and a
 | `item_id` | yes |  |  |
 | `month` | yes |  |  |
 | `qty` | yes |  |  |
+| `stockout_days` |  | `0.0` | Days the item was out of stock that month. The planner estimates true demand from the days it was available |
 
 ## sales_orders
 

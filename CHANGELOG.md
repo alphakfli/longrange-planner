@@ -13,6 +13,9 @@
 - KPIs tab: lag-1 forecast bias over the last 3 months (each month judged on the version that
   planned it), with a chart, a month-by-month table and a Forecast bias alert outside ±10%.
   Settings `bias_alert_pct` and `bias_months`. Sample data gets two archived versions.
+- Stock-outs: optional `stockout_days` in sales history. Demand for those months is estimated from the
+  selling days (capped at 3×) and used for planning, the baseline and bias; shown on the Forecast chart,
+  the KPIs bias section, Data check and Excel, with a Stock-out alert. Sample: FG-1003, 9 days in Oct 2026.
 - Sample data: four proposed events.
 
 ## 0.1.0 (2026-11-20)

@@ -225,6 +225,14 @@ with tabs[2]:
         h = hist.groupby("month")["qty"].sum()
         if len(h):
             fig.add_trace(go.Bar(x=[label(m) for m in h.index], y=h.values, name="Actual sales", marker_color=GREY))
+            so = r.stockouts[r.stockouts["item_id"].isin(hist["item_id"].unique())] if not r.stockouts.empty else r.stockouts
+            if not so.empty:
+                lost = so.groupby("month")["lost_qty"].sum().reindex(h.index, fill_value=0)
+                fig.add_trace(go.Bar(x=[label(m) for m in lost.index], y=lost.values, name="Lost to stock-out (estimated)",
+                                     marker=dict(color="rgba(0,0,0,0)", line=dict(color=RED, width=1.5), pattern_shape="/",
+                                                 pattern_fgcolor=RED),
+                                     hovertemplate="%{x}: about %{y:,.0f} lost<extra></extra>"))
+                fig.update_layout(barmode="stack")
         cur = fc[fc["version"] == r.version].groupby("month")["qty"].sum()
         fig.add_trace(go.Scatter(x=[label(m) for m in cur.index], y=cur.values, name=r.version, line=dict(color=ACCENT, width=3)))
         if show_prev and r.previous_version:
@@ -459,8 +467,15 @@ with tabs[6]:
         st.dataframe(tbl, hide_index=True, width="stretch", column_config=cfg)
         st.caption("Month columns = that month's error % against its lag-1 version. One big month can be a one-off "
                    "or a stock-out; the same sign every month is bias to fix at the source.")
+        so = bd[bd["stockout_days"] > 0]
+        if len(so):
+            st.warning("Stock-out months in this window: " + "; ".join(
+                f"{x.item_id} {label(x.month)}: {x.stockout_days:.0f} days out, {x.recorded:,.0f} sold, "
+                f"demand estimated at {x.actual:,.0f}" for x in so.itertuples())
+                + ". Bias uses the estimated demand, so the stock-out does not look like an over-forecast.")
         with st.expander("Which version planned each month"):
-            st.dataframe(bd.assign(month=bd["month"].map(label), error_pct=bd["error_pct"] * 100), hide_index=True,
+            st.dataframe(bd.assign(month=bd["month"].map(label), error_pct=bd["error_pct"] * 100, actual=bd["actual"].round(),
+                                   error=bd["error"].round()), hide_index=True,
                          width="stretch", column_config={"error_pct": st.column_config.NumberColumn("error %", format="%+.1f%%")})
 
     st.subheader("Plan attainment")
@@ -488,6 +503,16 @@ with tabs[7]:
         st.write("Planning notes:")
         for msg in r.issues:
             st.write("• " + msg)
+    if not r.stockouts.empty:
+        st.subheader("Stock-out corrections")
+        st.caption("Months with stockout_days in sales history. Planning, the statistical baseline and bias use the "
+                   "estimated demand: recorded × days in month ÷ (days in month − stock-out days), capped at 3×.")
+        so = r.stockouts.assign(month=r.stockouts["month"].map(label))
+        st.dataframe(so, hide_index=True, width="stretch",
+                     column_config={"recorded_qty": st.column_config.NumberColumn("recorded", format="localized"),
+                                    "estimated_qty": st.column_config.NumberColumn("estimated demand", format="localized"),
+                                    "lost_qty": st.column_config.NumberColumn("lost (est.)", format="localized"),
+                                    "capped": st.column_config.CheckboxColumn("capped at 3×")})
     with st.expander("Loaded tables"):
         for name in ["items", "bom", "work_centers", "routings", "supply_orders", "sales_orders"]:
             st.caption(name)

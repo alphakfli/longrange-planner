@@ -141,6 +141,13 @@ def build_sample() -> PlanningData:
                 archived.append([name, item, m, round(actual[(item, m)] * (1 + b), -2)])
     forecast = pd.concat([pd.DataFrame(archived, columns=forecast.columns), forecast], ignore_index=True)
 
+    # A stock-out: FG-1003 Retinol was out of stock 9 of 31 days in October 2026. Recorded sales show
+    # only what was available to sell; the planner estimates true demand from the 22 selling days.
+    sales_history["stockout_days"] = 0.0
+    so = (sales_history["item_id"] == "FG-1003") & (sales_history["month"] == "2026-10")
+    sales_history.loc[so, "qty"] = round(float(sales_history.loc[so, "qty"].iloc[0]) * 22 / 31)
+    sales_history.loc[so, "stockout_days"] = 9.0
+
     sales_orders = pd.DataFrame([
         ["FG-1001", "2026-12", 41000, "Retail DC East"], ["FG-1002", "2026-12", 30000, "Retail DC East"],
         ["FG-1001", "2027-01", 35000, "E-commerce"], ["FG-1003", "2026-12", 19000, "Wholesale UK"],

@@ -106,3 +106,20 @@ def test_sample_flags_bias_on_retinol_and_eye_serum():
     assert flagged == {"FG-1003", "FG-1006"}
     assert (r.alerts["category"] == "Forecast bias").sum() == 2
     assert r.summary()["alerts_critical"] == 6 and round(r.summary()["peak_load_pct"]) == 130
+
+
+def test_stockout_month_is_corrected_to_estimated_demand():
+    from longrange.forecast.stockouts import correct_history
+    h = pd.DataFrame([["A", "2026-10", 2200.0, 9.0], ["A", "2026-11", 3000.0, 0.0], ["B", "2026-02", 100.0, 27.0]],
+                     columns=["item_id", "month", "qty", "stockout_days"])
+    out, so = correct_history(h)
+    assert out.loc[0, "qty"] == 2200 * 31 / 22 and out.loc[1, "qty"] == 3000
+    assert so.loc[so["item_id"] == "B", "capped"].iloc[0] and out.loc[2, "qty"] == 300    # 28/1 = 28x, capped at 3x
+
+
+def test_sample_stockout_keeps_the_plan_and_is_visible():
+    r = run_plan(build_sample())
+    assert len(r.stockouts) == 1 and r.stockouts.loc[0, "item_id"] == "FG-1003" and r.stockouts.loc[0, "lost_qty"] > 7000
+    row = r.bias_detail[(r.bias_detail["item_id"] == "FG-1003") & (r.bias_detail["month"] == "2026-10")].iloc[0]
+    assert row["stockout_days"] == 9 and row["recorded"] < row["actual"] and row["error"] < 0   # under-forecast, not over
+    assert (r.alerts["category"] == "Stock-out").sum() == 1

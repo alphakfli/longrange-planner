@@ -145,6 +145,10 @@ def excel_report(r: PlanResult) -> bytes:
         acc["wmape"] *= 100
         acc["bias"] *= 100
         _sheet(wb, "Forecast accuracy", acc, number_formats={"wmape": '0.0"%"', "bias": '0.0"%"'})
+    if not r.stockouts.empty:
+        so = r.stockouts.copy()
+        so["month"] = so["month"].map(label)
+        _sheet(wb, "Stock-out corrections", so, number_formats={"recorded_qty": "#,##0", "estimated_qty": "#,##0", "lost_qty": "#,##0"})
     if not r.bias_summary.empty:
         _sheet(wb, "Bias last months (lag 1)", r.bias_summary,
                number_formats={"bias": "+0.0%;-0.0%", "wmape": "0.0%", "forecast": "#,##0", "actual": "#,##0"})

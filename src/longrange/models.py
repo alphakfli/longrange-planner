@@ -94,7 +94,9 @@ SCHEMA: dict[str, dict] = {
         "required": False,
         "help": "Actual sales or shipments by item and month. Used for statistical forecast and accuracy.",
         "columns": [_c("item_id", required=True), _c("month", "month", required=True),
-                    _c("qty", "number", required=True)],
+                    _c("qty", "number", required=True),
+                    _c("stockout_days", "number", default=0.0,
+                       help="Days the item was out of stock that month. The planner estimates true demand from the days it was available")],
     },
     "sales_orders": {
         "required": False,

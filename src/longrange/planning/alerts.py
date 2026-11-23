@@ -11,7 +11,7 @@ COLUMNS = ["severity", "category", "ref", "month", "message", "suggested_action"
 
 
 def build_alerts(*, items, inventory, load, planned_orders, action_messages, forecast_bridge, attainment_by_month,
-                 safety, issues, settings, events=None, event_impact=None, bias_summary=None) -> pd.DataFrame:
+                 safety, issues, settings, events=None, event_impact=None, bias_summary=None, stockouts=None) -> pd.DataFrame:
     a: list[dict] = []
 
     def add(sev, cat, ref, month, msg, act):
@@ -115,6 +115,20 @@ def build_alerts(*, items, inventory, load, planned_orders, action_messages, for
             add("Warning", "Forecast bias", r.item_id, "",
                 f"{r.item_id} {names.get(r.item_id, '')}: {r.direction} by {r.bias:+.0%} over the last {r.months} months "
                 f"(lag 1, limit ±{settings.bias_alert_pct:.0f}%).", act)
+
+    # Stock-outs in sales history
+    if stockouts is not None and not stockouts.empty:
+        for r in stockouts.itertuples():
+            if r.capped:
+                add("Warning", "Stock-out", r.item_id, r.month,
+                    f"{r.item_id} {names.get(r.item_id, '')}: out of stock {r.stockout_days:.0f} of {r.days_in_month} days in "
+                    f"{label(r.month)}; demand estimate capped at {r.estimated_qty:,.0f} (recorded {r.recorded_qty:,.0f}).",
+                    "Too few selling days for a reliable rate: enter a manual demand estimate with Demand Planning.")
+            else:
+                add("Info", "Stock-out", r.item_id, r.month,
+                    f"{r.item_id} {names.get(r.item_id, '')}: out of stock {r.stockout_days:.0f} days in {label(r.month)}. "
+                    f"Demand estimated at {r.estimated_qty:,.0f} vs {r.recorded_qty:,.0f} sold (about {r.lost_qty:,.0f} lost).",
+                    "Planning, the baseline and bias use the estimate. Find the supply cause so it does not repeat.")
 
     # Attainment
     if attainment_by_month is not None and not attainment_by_month.empty:

@@ -66,7 +66,7 @@ def compare_versions_monthly(forecast: pd.DataFrame, new: str, old: str) -> pd.D
 
 
 def lag_accuracy(forecast: pd.DataFrame, history: pd.DataFrame, n_months: int = 3, lag: int = 1,
-                 threshold: float = 0.10) -> tuple[pd.DataFrame, pd.DataFrame]:
+                 threshold: float = 0.10, stockouts: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Accuracy and bias of the forecast that was used to plan each month ("lag 1").
 
     For each of the last ``n_months`` months with actual sales, take the version whose first
@@ -103,6 +103,14 @@ def lag_accuracy(forecast: pd.DataFrame, history: pd.DataFrame, n_months: int = 
         if picked == n_months:
             break
     detail = pd.DataFrame(rows, columns=det_cols).sort_values(["item_id", "month"]).reset_index(drop=True)
+    detail["stockout_days"] = 0.0
+    detail["recorded"] = detail["actual"]
+    if stockouts is not None and not stockouts.empty:
+        so = stockouts.set_index(["item_id", "month"])
+        for i, r in detail.iterrows():
+            if (r["item_id"], r["month"]) in so.index:
+                detail.at[i, "stockout_days"] = so.loc[(r["item_id"], r["month"]), "stockout_days"]
+                detail.at[i, "recorded"] = so.loc[(r["item_id"], r["month"]), "recorded_qty"]
     if detail.empty:
         return detail, pd.DataFrame(columns=sum_cols)
     out = []
