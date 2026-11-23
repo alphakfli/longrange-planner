@@ -170,6 +170,7 @@ Two columns, `key` and `value`. Any key left out takes its default.
 | `weeks_per_month` | 4.33 |
 | `bias_alert_pct` | 10 |
 | `bias_months` | 3 |
+| `baseline_gap_alert_pct` | 20 |
 | `service_level_policy` | single |
 | `abc_a_share` | 0.8 |
 | `abc_b_share` | 0.95 |

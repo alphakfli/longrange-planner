@@ -13,6 +13,13 @@ independent demand = max(forecast, sales orders)
 This is forecast consumption: sales orders in a month use up that month's forecast, so demand is not
 counted twice. Load forecast entries on the first of the month (any date in the month is read as that month).
 
+### Consensus vs statistical baseline
+
+For each item, gap = consensus ÷ baseline − 1 over the plan horizon. Beyond ±`settings.baseline_gap_alert_pct`
+(20%) the item gets a Baseline gap alert: the consensus is far from what history alone suggests, so it needs a
+known event behind it. The largest single-month gap is shown too, but does not alert on its own, because
+methods without seasonality always miss a sale month.
+
 ### Stock-out months
 
 Recorded sales in a month when an item was out of stock show only what supply allowed. With `stockout_days`

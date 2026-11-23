@@ -16,6 +16,8 @@
 - Stock-outs: optional `stockout_days` in sales history. Demand for those months is estimated from the
   selling days (capped at 3×) and used for planning, the baseline and bias; shown on the Forecast chart,
   the KPIs bias section, Data check and Excel, with a Stock-out alert. Sample: FG-1003, 9 days in Oct 2026.
+- Consensus vs statistical baseline: gap per item over the horizon and its largest month, on the Forecast
+  tab and in Excel, with a Baseline gap alert beyond `baseline_gap_alert_pct` (20%).
 - Sample data: four proposed events.
 
 ## 0.1.0 (2026-11-20)

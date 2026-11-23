@@ -11,7 +11,7 @@ COLUMNS = ["severity", "category", "ref", "month", "message", "suggested_action"
 
 
 def build_alerts(*, items, inventory, load, planned_orders, action_messages, forecast_bridge, attainment_by_month,
-                 safety, issues, settings, events=None, event_impact=None, bias_summary=None, stockouts=None) -> pd.DataFrame:
+                 safety, issues, settings, events=None, event_impact=None, bias_summary=None, stockouts=None, baseline_gaps=None) -> pd.DataFrame:
     a: list[dict] = []
 
     def add(sev, cat, ref, month, msg, act):
@@ -115,6 +115,16 @@ def build_alerts(*, items, inventory, load, planned_orders, action_messages, for
             add("Warning", "Forecast bias", r.item_id, "",
                 f"{r.item_id} {names.get(r.item_id, '')}: {r.direction} by {r.bias:+.0%} over the last {r.months} months "
                 f"(lag 1, limit ±{settings.bias_alert_pct:.0f}%).", act)
+
+    # Consensus vs statistical baseline
+    if baseline_gaps is not None and not baseline_gaps.empty:
+        for r in baseline_gaps[baseline_gaps["flag"]].itertuples():
+            side = "above" if r.gap > 0 else "below"
+            add("Warning", "Baseline gap", r.item_id, r.max_month,
+                f"{r.item_id} {names.get(r.item_id, '')}: consensus {r.gap:+.0%} vs the statistical baseline over the horizon "
+                f"(largest: {label(r.max_month)}, {r.max_month_consensus:,.0f} vs {r.max_month_baseline:,.0f}).",
+                f"Ask Demand Planning which known event puts the consensus {side} what history suggests; "
+                "write it in the change log, or bring the item to the review.")
 
     # Stock-outs in sales history
     if stockouts is not None and not stockouts.empty:

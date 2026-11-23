@@ -123,3 +123,20 @@ def test_sample_stockout_keeps_the_plan_and_is_visible():
     row = r.bias_detail[(r.bias_detail["item_id"] == "FG-1003") & (r.bias_detail["month"] == "2026-10")].iloc[0]
     assert row["stockout_days"] == 9 and row["recorded"] < row["actual"] and row["error"] < 0   # under-forecast, not over
     assert (r.alerts["category"] == "Stock-out").sum() == 1
+
+
+def test_baseline_gap_flags_only_the_whole_horizon():
+    from longrange.forecast.accuracy import baseline_gap
+    fc = pd.DataFrame([["V", "A", m, q] for m, q in [("2027-01", 100), ("2027-02", 200)]] +
+                      [["V", "B", m, 100] for m in ["2027-01", "2027-02"]], columns=["version", "item_id", "month", "qty"])
+    st = pd.DataFrame([["STAT", "A", "2027-01", 100], ["STAT", "A", "2027-02", 100],
+                       ["STAT", "B", "2027-01", 100], ["STAT", "B", "2027-02", 100]], columns=["version", "item_id", "month", "qty"])
+    g = baseline_gap(fc, "V", st, ["2027-01", "2027-02"], .20).set_index("item_id")
+    assert g.loc["A", "gap"] == .5 and g.loc["A", "flag"] and g.loc["A", "max_month"] == "2027-02"
+    assert g.loc["B", "gap"] == 0 and not g.loc["B", "flag"]
+
+
+def test_sample_baseline_gap_flags_retinol():
+    r = run_plan(build_sample())
+    assert set(r.baseline_gaps.loc[r.baseline_gaps["flag"], "item_id"]) == {"FG-1003"}
+    assert (r.alerts["category"] == "Baseline gap").sum() == 1

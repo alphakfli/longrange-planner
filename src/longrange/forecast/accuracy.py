@@ -120,3 +120,31 @@ def lag_accuracy(forecast: pd.DataFrame, history: pd.DataFrame, n_months: int = 
                     abs(b) > threshold, "over-forecast" if b > 0 else "under-forecast" if b < 0 else "none"])
     summary = pd.DataFrame(out, columns=sum_cols).sort_values("bias", key=abs, ascending=False).reset_index(drop=True)
     return detail, summary
+
+
+def baseline_gap(forecast: pd.DataFrame, version: str, stat: pd.DataFrame, months: list[str],
+                 threshold: float = 0.20) -> pd.DataFrame:
+    """Consensus (the forecast version) against the statistical baseline, per item over the plan months.
+
+    gap = consensus / baseline - 1: positive = consensus above what history alone suggests.
+    ``flag`` is True when the total gap is beyond ``threshold``; the largest single-month gap is
+    shown for context (single months are noisy, so they do not flag on their own).
+    """
+    cols = ["item_id", "consensus", "baseline", "gap", "max_month", "max_month_consensus", "max_month_baseline",
+            "max_month_gap", "flag"]
+    if stat is None or stat.empty or forecast.empty:
+        return pd.DataFrame(columns=cols)
+    c = forecast[(forecast["version"] == version) & forecast["month"].isin(months)].groupby(["item_id", "month"])["qty"].sum()
+    b = stat[stat["month"].isin(months)].groupby(["item_id", "month"])["qty"].sum()
+    m = pd.concat([c.rename("consensus"), b.rename("baseline")], axis=1).dropna().reset_index()
+    rows = []
+    for item, g in m.groupby("item_id"):
+        tb = g["baseline"].sum()
+        if tb <= 0:
+            continue
+        gap = g["consensus"].sum() / tb - 1
+        g = g[g["baseline"] > 0].assign(mg=lambda x: x["consensus"] / x["baseline"] - 1)
+        top = g.loc[g["mg"].abs().idxmax()]
+        rows.append([item, g["consensus"].sum(), tb, gap, top["month"], top["consensus"], top["baseline"], top["mg"],
+                     abs(gap) > threshold])
+    return pd.DataFrame(rows, columns=cols).sort_values("gap", key=abs, ascending=False).reset_index(drop=True)

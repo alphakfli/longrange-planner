@@ -287,6 +287,21 @@ with tabs[2]:
                                        for d in r.stat_details]), hide_index=True, width="stretch",
                          column_config={"holdout WMAPE": st.column_config.NumberColumn(format="%.1f%%")})
             st.caption("Each item uses the method with the lowest error on the last 6 months of history.")
+            if not r.baseline_gaps.empty:
+                lim = settings.baseline_gap_alert_pct
+                st.markdown(f"**Consensus vs baseline** ({r.version}, {len(months)} months)")
+                gp = r.baseline_gaps.assign(gap=r.baseline_gaps["gap"] * 100, max_month_gap=r.baseline_gaps["max_month_gap"] * 100,
+                                            max_month=r.baseline_gaps["max_month"].map(label))
+                st.dataframe(gp[["item_id", "consensus", "baseline", "gap", "max_month", "max_month_gap", "flag"]],
+                             hide_index=True, width="stretch",
+                             column_config={"consensus": st.column_config.NumberColumn(format="localized"),
+                                            "baseline": st.column_config.NumberColumn(format="localized"),
+                                            "gap": st.column_config.NumberColumn("gap, horizon", format="%+.1f%%"),
+                                            "max_month": st.column_config.TextColumn("largest month"),
+                                            "max_month_gap": st.column_config.NumberColumn("gap that month", format="%+.0f%%"),
+                                            "flag": st.column_config.CheckboxColumn(f"outside ±{lim:.0f}%")})
+                st.caption(f"Gap = consensus ÷ baseline − 1. Beyond ±{lim:.0f}% over the horizon needs a known event to "
+                           "explain it. Big single-month gaps at a sale or launch are normal for methods without seasonality.")
             if not r.stat_forecast.empty:
                 stat_ver = r.stat_forecast.copy()
                 stat_ver["version"] = f"STAT-{months[0]}"

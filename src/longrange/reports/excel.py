@@ -145,6 +145,12 @@ def excel_report(r: PlanResult) -> bytes:
         acc["wmape"] *= 100
         acc["bias"] *= 100
         _sheet(wb, "Forecast accuracy", acc, number_formats={"wmape": '0.0"%"', "bias": '0.0"%"'})
+    if not r.baseline_gaps.empty:
+        bg = r.baseline_gaps.copy()
+        bg["max_month"] = bg["max_month"].map(label)
+        _sheet(wb, "Consensus vs baseline", bg, number_formats={"consensus": "#,##0", "baseline": "#,##0", "gap": "+0.0%;-0.0%",
+                                                                "max_month_consensus": "#,##0", "max_month_baseline": "#,##0",
+                                                                "max_month_gap": "+0%;-0%"})
     if not r.stockouts.empty:
         so = r.stockouts.copy()
         so["month"] = so["month"].map(label)
