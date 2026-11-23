@@ -46,6 +46,22 @@ want to use it.
 The dashboard opens in your browser with sample data from a fictional cosmetics plant. Switch to
 **Upload Excel or CSV** in the sidebar to plan your own data.
 
+### Put it online (Netlify or any static host)
+
+The dashboard can also run with no server at all: [stlite](https://github.com/whitphx/stlite) runs Python and
+Streamlit inside the visitor's browser, so uploaded files never leave their computer.
+
+```bash
+python scripts/build_site.py              # builds ./site
+python -m http.server -d site 8000        # preview at http://localhost:8000
+```
+
+- **Netlify, drag and drop:** build, then drag the `site` folder onto [app.netlify.com/drop](https://app.netlify.com/drop).
+- **Netlify from GitHub:** connect the repository; `netlify.toml` already sets the build command and the `site` folder.
+- On Windows, `preview_site.bat` builds and opens the local preview.
+
+The first visit takes 20 to 40 seconds while the browser downloads Python; later visits are faster.
+
 ### Command line
 
 ```bash

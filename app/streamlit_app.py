@@ -120,6 +120,9 @@ mlabels = [label(m) for m in months]
 
 # ---------- header ----------
 st.title("Long-term production plan")
+if src == "Sample data":
+    st.info("Demo with fictional data from 'Northfield Skincare'. Try the what-if controls in the sidebar, "
+            "or upload your own Excel file: it stays in your browser.", icon="ℹ️")
 st.caption(f"Forecast **{r.version}**" + (f" vs {r.previous_version}" if r.previous_version else "") +
            f" · {label(months[0])} to {label(months[-1])} · {r.scenario.name}")
 c = st.columns(6)
