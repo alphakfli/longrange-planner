@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0 (2026-11-25)
+
+- Order management: optional `order_lines` table (open and shipped customer order lines). Orders tab with OTIF
+  against requested and confirmed dates, fill rate, backlog and past-due lines, by month, customer and item.
+- Order promising (available to promise) in monthly buckets, on firm supply inside the frozen zone and on the full
+  plan; lines that need a planned order firmed name that order. Settings `orders_as_of`, `otif_target_pct`,
+  `otif_tolerance_days`, `otif_months`, `atp_basis`.
+- Planning data health: sixteen checks with records, impact, SAP / IBP fix and owner, and a weighted score.
+- Supply review agenda by function (manufacturing, procurement, logistics, customer service, business management,
+  supply chain), downloadable as text.
+- IBP key-figure / Power BI workbook export; new Excel sheets and a PDF page for customer service and data health.
+- New alerts: order at risk, past-due orders, OTIF, data health. Overview and KPIs show service KPIs.
+- docs/sap-ibp-mapping.md. Sample data: 230 customer order lines for Northfield Skincare; the plan is unchanged.
+- Sensitive-data check before every push and in CI.
+
 ## 0.2.0 (2026-11-23)
 
 - Demand events: new optional `events` sheet for promotions, launches and delistings, applied on top of the

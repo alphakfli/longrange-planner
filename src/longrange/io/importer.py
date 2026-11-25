@@ -34,6 +34,7 @@ SHEET_ALIASES = {"item": "items", "boms": "bom", "workcenters": "work_centers", 
                  "routing": "routings", "forecasts": "forecast", "demand_forecast": "forecast",
                  "history": "sales_history", "sales": "sales_history", "orders": "sales_orders",
                  "open_orders": "supply_orders", "supply": "supply_orders", "actuals": "production_actuals",
+                 "order_line": "order_lines", "customer_orders": "order_lines", "sales_order_lines": "order_lines",
                  "setting": "settings"}
 
 
@@ -87,6 +88,12 @@ def _clean_table(sheet: str, raw: pd.DataFrame, issues: list[ValidationIssue]) -
             if col.default is not None:
                 num = num.fillna(col.default)
             df[col.name] = num.astype("float64")
+        elif col.kind == "date":
+            dt = pd.to_datetime(s, errors="coerce", format="mixed") if len(s) else pd.to_datetime(s)
+            bad = s.notna() & dt.isna() & (s.astype(str).str.strip() != "")
+            for idx in df.index[bad][:5]:
+                issues.append(ValidationIssue("warning", sheet, f"'{col.name}' value '{s[idx]}' is not a date; treated as blank.", int(idx) + 2))
+            df[col.name] = dt.dt.normalize()
         elif col.kind == "month":
             mon = s.map(normalize_month)
             for idx in df.index[mon.isna() & s.notna()][:5]:
@@ -120,7 +127,8 @@ def _cross_checks(data: PlanningData, issues: list[ValidationIssue]) -> None:
         issues.append(ValidationIssue("error", "items", f"Item {r['item_id']}: replenishment must be 'make' or 'buy', got '{r['replenishment']}'."))
     known = set(items["item_id"])
     for sheet, col in [("bom", "parent_item"), ("bom", "component_item"), ("routings", "item_id"),
-                       ("forecast", "item_id"), ("sales_orders", "item_id"), ("supply_orders", "item_id")]:
+                       ("forecast", "item_id"), ("sales_orders", "item_id"), ("supply_orders", "item_id"),
+                       ("order_lines", "item_id")]:
         df = data.table(sheet)
         unknown = sorted(set(df[col]) - known) if not df.empty else []
         if unknown:
@@ -163,6 +171,13 @@ def _cross_checks(data: PlanningData, issues: list[ValidationIssue]) -> None:
         row = items[items["item_id"] == item].iloc[0]
         if row["item_type"] == "FG" and item not in bom_parents:
             issues.append(ValidationIssue("warning", "bom", f"Finished good {item} is made but has no BOM."))
+    if not data.order_lines.empty:
+        ol = data.order_lines
+        ol["status"] = ol["status"].fillna("open").astype(str).str.strip().str.lower()
+        bad = ol[~ol["status"].isin(["open", "shipped", "cancelled"])]
+        if len(bad):
+            issues.append(ValidationIssue("warning", "order_lines", f"status must be open, shipped or cancelled; {len(bad)} row(s) treated as open."))
+            ol.loc[bad.index, "status"] = "open"
     if data.forecast.empty:
         issues.append(ValidationIssue("error", "forecast", "No forecast rows found."))
     neg = items[items["on_hand"] < 0]

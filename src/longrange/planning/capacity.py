@@ -54,7 +54,8 @@ def capacity_load(supply: pd.DataFrame, routings: pd.DataFrame, avail: pd.DataFr
                            "source": r.source, "status": r.status, "qty": float(r.qty), "hours": hours})
     det = pd.DataFrame(detail, columns=["work_center", "month", "item_id", "source", "status", "qty", "hours"])
     req = det.groupby(["work_center", "month"], as_index=False)["hours"].sum().rename(columns={"hours": "required_hours"})
-    load = avail.merge(req, on=["work_center", "month"], how="left").fillna({"required_hours": 0.0})
+    load = avail.merge(req, on=["work_center", "month"], how="left")
+    load["required_hours"] = pd.to_numeric(load["required_hours"], errors="coerce").fillna(0.0).astype(float)
     load["load_pct"] = (load["required_hours"] / load["available_hours"].where(load["available_hours"] > 0) * 100).fillna(0)
     load["spare_hours"] = load["available_hours"] - load["required_hours"]
     return load, det

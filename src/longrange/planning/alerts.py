@@ -162,3 +162,48 @@ def build_alerts(*, items, inventory, load, planned_orders, action_messages, for
     df["_s"] = df["severity"].map(SEVERITY_ORDER)
     df["_m"] = df["month"].replace("", "9999-99")
     return df.sort_values(["_s", "_m", "category"]).drop(columns=["_s", "_m"]).reset_index(drop=True)
+
+
+def service_alerts(r) -> pd.DataFrame:
+    """Add order-management and data-health alerts to the plan's alerts, keeping the sort order."""
+    a: list[dict] = []
+    s = r.settings
+
+    def add(sev, cat, ref, month, msg, act):
+        a.append(dict(zip(COLUMNS, [sev, cat, ref, month, msg, act], strict=True)))
+
+    o = r.orders
+    if o is not None:
+        op = o.open_lines
+        for (item, status), g in op[op["at_risk"]].groupby(["item_id", "promise_status"]):
+            first = g.iloc[0]
+            add("Critical" if status == "Late" else "Warning", "Order at risk", item, r.months[0],
+                f"{len(g)} open line(s) for {item} ({g['open_qty'].sum():,.0f} units, {', '.join(g['customer'].unique()[:3])}) "
+                f"cannot ship on their confirmed dates from firm supply; on firm supply they ship "
+                f"{pd.Timestamp(first['promise_month'] + '-01').strftime('%b %Y') if first['promise_month'] else 'after the horizon'}.",
+                first["action"])
+        pdue = op[op["past_due"]]
+        if len(pdue):
+            add("Warning", "Past due order", f"{len(pdue)} lines", r.months[0],
+                f"{len(pdue)} open line(s) are past their confirmed date ({pdue['value'].sum():,.0f} in value; oldest "
+                f"{int(pdue['days_past_due'].max())} days).", "Ship now where stock allows; otherwise re-date with the customer.")
+        k = o.kpis
+        if k["otif_confirmed_pct"] == k["otif_confirmed_pct"] and k["otif_confirmed_pct"] < s.otif_target_pct:
+            add("Warning", "OTIF", "Customer service", "",
+                f"OTIF against confirmed dates is {k['otif_confirmed_pct']:.1f}% over {s.otif_months} months "
+                f"(target {s.otif_target_pct:.0f}%); against requested dates {k['otif_requested_pct']:.1f}%.",
+                "Review the late and short lines by item and customer on the Orders tab.")
+        bi = o.by_item
+        for x in bi[(bi["otif_confirmed_pct"] < s.otif_target_pct - 15)].itertuples() if len(bi) else []:
+            add("Info", "OTIF", x.item_id, "", f"{x.item_id} {x.description}: OTIF {x.otif_confirmed_pct:.0f}% vs confirmed dates.",
+                "Find the cause: supply, capacity, contract manufacturer or order promising.")
+    if r.data_health is not None:
+        for x in r.data_health[r.data_health["status"] == "Fix"].itertuples():
+            sev = {"High": "Warning", "Medium": "Info", "Low": "Info"}[x.severity]
+            add(sev, "Data health", x.check_id, "", f"{x.check}: {x.records} record(s) ({x.examples}).", x.fix)
+    if not a:
+        return r.alerts
+    df = pd.concat([r.alerts, pd.DataFrame(a, columns=COLUMNS)], ignore_index=True)
+    df["_s"] = df["severity"].map(SEVERITY_ORDER)
+    df["_m"] = df["month"].fillna("").replace("", "9999-99")
+    return df.sort_values(["_s", "_m", "category"], kind="stable").drop(columns=["_s", "_m"]).reset_index(drop=True)

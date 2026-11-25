@@ -249,5 +249,44 @@ def pdf_report(r: PlanResult, title: str = "S&OP supply review") -> bytes:
     else:
         story.append(Paragraph("No production actuals loaded.", BODY))
 
+    # Page 5: customer service and planning data
+    if r.orders is not None or r.data_health is not None:
+        story.append(PageBreak())
+        story.append(Paragraph("Customer service: can we keep our promises?", H2))
+    if r.orders is not None:
+        k = r.orders.kpis
+        story.append(Paragraph(
+            f"OTIF vs confirmed date {_fmt(k['otif_confirmed_pct'], 'pct1')} (target {r.settings.otif_target_pct:.0f}%), "
+            f"vs requested date {_fmt(k['otif_requested_pct'], 'pct1')}, fill rate {_fmt(k['fill_rate_pct'], 'pct1')} over "
+            f"{r.settings.otif_months} months. Open backlog {k['open_lines']} lines ({_fmt(k['backlog_value'])}); "
+            f"{k['past_due_lines']} past due, {k['at_risk_lines']} at risk.", BODY))
+        risk = r.orders.open_lines[r.orders.open_lines["at_risk"] | r.orders.open_lines["past_due"]]
+        if len(risk):
+            rows = [["Order", "Customer", "Item", "Open qty", "Confirmed", "Promise (firm)", "Status", "Action"]]
+            for x in risk.itertuples():
+                rows.append([x.order_id, Paragraph(str(x.customer), CELL), x.item_id, _fmt(x.open_qty),
+                             f"{x.confirmed_date:%d %b}" if x.confirmed_date == x.confirmed_date else "",
+                             label(x.promise_month) if x.promise_month else "after horizon", Paragraph(x.promise_status, CELL),
+                             Paragraph(x.action or "", CELL)])
+            story.append(_table(rows, [0.9 * inch, 1.3 * inch, 0.8 * inch, 0.8 * inch, 0.8 * inch, 0.9 * inch, 1.5 * inch, 3.0 * inch]))
+        if len(r.orders.otif_month):
+            rows = [["Month", "Lines", "OTIF vs confirmed", "OTIF vs requested", "In full", "Fill rate"]]
+            for x in r.orders.otif_month.itertuples():
+                rows.append([label(x.month), f"{x.lines:.0f}", _fmt(x.otif_confirmed_pct, "pct1"), _fmt(x.otif_requested_pct, "pct1"),
+                             _fmt(x.in_full_pct, "pct1"), _fmt(x.fill_rate_pct, "pct1")])
+            story.append(Spacer(1, 8))
+            story.append(_table(rows, [1.2 * inch, 0.8 * inch, 1.5 * inch, 1.5 * inch, 1.2 * inch, 1.2 * inch]))
+    if r.data_health is not None:
+        hk = r.health_kpis
+        story.append(Spacer(1, 10))
+        story.append(Paragraph(f"Planning data health: {hk['score']:.0f}% ({hk['passed']} of {hk['checks']} checks pass)", H2))
+        bad = r.data_health[r.data_health["status"] == "Fix"]
+        if len(bad):
+            rows = [["Check", "Severity", "Records", "Examples", "Fix", "Owner"]]
+            for x in bad.itertuples():
+                rows.append([Paragraph(x.check, CELL), x.severity, str(x.records), Paragraph(x.examples, CELL),
+                             Paragraph(x.fix, CELL), Paragraph(x.owner, CELL)])
+            story.append(_table(rows, [2.6 * inch, 0.7 * inch, 0.6 * inch, 1.4 * inch, 3.2 * inch, 1.3 * inch]))
+
     doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
     return buf.getvalue()

@@ -137,6 +137,25 @@ Promotions, launches and delistings to lay on top of the forecast. Approved even
 | `status` |  | `approved` | approved (in the plan) or proposed (what-if only) |
 | `note` |  | blank | Owner or reason, e.g. 'Marketing: spring sale extension' |
 
+## order_lines
+
+Customer order lines, open and shipped (last 12 months): for OTIF, fill rate, backlog and order promising. Open lines here do not change the plan; sales_orders still drive netting.
+
+| Column | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `order_id` | yes |  |  |
+| `line` |  | `10.0` |  |
+| `customer` |  | blank |  |
+| `item_id` | yes |  |  |
+| `qty` | yes |  |  |
+| `unit_price` |  | `0.0` | Selling price per unit; blank = unit cost |
+| `order_date` |  | blank |  |
+| `requested_date` | yes |  | Date the customer asked for |
+| `confirmed_date` |  | blank | Date we committed to (schedule-line confirmation) |
+| `shipped_date` |  | blank | Blank while the line is open |
+| `shipped_qty` |  | `0.0` |  |
+| `status` |  | `open` | open, shipped or cancelled |
+
 ## production_actuals
 
 Planned vs actual production by item and month, for attainment KPIs.
@@ -185,3 +204,8 @@ Two columns, `key` and `value`. Any key left out takes its default.
 | `sl_cx` | 0.93 |
 | `sl_cy` | 0.92 |
 | `sl_cz` | 0.9 |
+| `orders_as_of` | blank |
+| `otif_target_pct` | 95.0 |
+| `otif_tolerance_days` | 0 |
+| `otif_months` | 6 |
+| `atp_basis` | firm_in_frozen |

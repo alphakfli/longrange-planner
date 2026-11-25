@@ -1,0 +1,5 @@
+event_id,item_id,event_type,start_month,end_month,lift_pct,extra_qty,status,note
+EV-01,FG-1001,promo,2027-03,2027-04,25,0,proposed,Marketing: extend the spring sale into March
+EV-02,FG-1003,launch,2027-06,2027-11,0,6000,proposed,Sales: new retailer listing
+EV-03,FG-1006,delist,2027-09,,-100,0,proposed,Portfolio review: phase-out candidate
+EV-04,FG-1002,promo,2027-01,2027-01,20,0,proposed,E-commerce: January bundle

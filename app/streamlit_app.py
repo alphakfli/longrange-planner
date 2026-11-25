@@ -22,9 +22,13 @@ from longrange.io.importer import load_files
 from longrange.io.template import template_bytes
 from longrange.months import label
 from longrange.reports import excel_report, pdf_report
+from longrange.reports.ibp import ibp_workbook
+from longrange.review import GROUPS, agenda_markdown
 from longrange.sample import build_sample
 
 st.set_page_config(page_title="LongRange Planner", page_icon="📈", layout="wide")
+# informational deltas ("target 95%", "15 lines") show without an arrow where Streamlit supports it
+NOARROW = {"delta_arrow": "off"} if "delta_arrow" in __import__("inspect").signature(st.metric).parameters else {}
 
 ACCENT, RED, AMBER, GREEN, GREY = "#0D5D6E", "#B4372A", "#C98A2B", "#2B7A4B", "#9AA8A3"
 ITEM_COLORS = ["#0D5D6E", "#5DB4C6", "#2B7A4B", "#8FC9A3", "#6B6FB5", "#B5A8D6", "#7A8C86", "#C7D3CE"]
@@ -158,13 +162,43 @@ c[1].metric(f"Peak load · {S['peak_load_wc']} {label(S['peak_load_month'])}" if
             f"{S['peak_load_pct']:.0f}%")
 c[2].metric("Overloaded WC-months", S["overloaded_months"])
 c[3].metric("Inventory value now", f"${S['inventory_value_start'] / 1000:,.0f}k")
-c[4].metric("E&O risk items", S["eo_risk_items"])
+c[4].metric("E&ORD risk items", S["eo_risk_items"])
 c[5].metric("Absolute attainment (3 mo)", "–" if np.isnan(S["absolute_attainment_pct"]) else f"{S['absolute_attainment_pct']:.1f}%")
 
-tabs = st.tabs(["Overview", "Alerts", "Forecast", "MPS / MRP", "Capacity", "Inventory", "KPIs", "Data check", "Export"])
+tabs = st.tabs(["Overview", "Alerts", "Forecast", "MPS / MRP", "Capacity", "Inventory", "Orders", "KPIs",
+                "Data health", "Supply review", "Data check", "Export"])
+ORD = r.orders
+
+
+def _pct(v):
+    return "–" if v is None or v != v else f"{v:.1f}%"
+
+
+def _mon(m):
+    return label(m) if isinstance(m, str) and m else "after horizon"
+
+
+def otif_chart(om, height=300):
+    x = [label(m) for m in om["month"]]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=x, y=om["otif_confirmed_pct"], name="OTIF vs confirmed date", marker_color=ACCENT,
+                         hovertemplate="%{x}: %{y:.1f}% vs confirmed<extra></extra>"))
+    fig.add_trace(go.Bar(x=x, y=om["otif_requested_pct"], name="OTIF vs requested date", marker_color="#5DB4C6",
+                         hovertemplate="%{x}: %{y:.1f}% vs requested<extra></extra>"))
+    fig.add_trace(go.Scatter(x=x, y=om["fill_rate_pct"], name="Fill rate (units)", mode="lines+markers",
+                             line=dict(color=GREEN, width=2), hovertemplate="%{x}: fill rate %{y:.1f}%<extra></extra>"))
+    fig.add_hline(y=settings.otif_target_pct, line_dash="dash", line_color=RED, annotation_text="OTIF target")
+    return _fig_layout(fig, height, barmode="group", yaxis_range=[40, 105], yaxis_ticksuffix="%")
 
 # ---------- Overview ----------
 with tabs[0]:
+    if ORD is not None or r.health_kpis:
+        k0 = st.columns(4)
+        k0[0].metric("OTIF vs confirmed date", _pct(S["otif_confirmed_pct"]),
+                     help=f"Last {settings.otif_months} months of shipped lines. Target {settings.otif_target_pct:.0f}%.")
+        k0[1].metric("Fill rate (units)", _pct(S["fill_rate_pct"]))
+        k0[2].metric("Open order lines at risk", S["at_risk_lines"], help="Cannot ship on the confirmed date from firm supply.")
+        k0[3].metric("Planning data health", _pct(S["data_health_score"]), help="See the Data health tab.")
     left, right = st.columns([3, 2])
     with left:
         st.subheader("Capacity load by work center")
@@ -447,8 +481,71 @@ with tabs[5]:
                                         yaxis2=dict(overlaying="y", side="right", range=[0, 105], ticksuffix="%", showgrid=False)),
                             width="stretch")
 
-# ---------- KPIs ----------
+
+# ---------- Orders ----------
 with tabs[6]:
+    if ORD is None:
+        st.info("Add an order_lines table (open and shipped customer order lines) to see OTIF, backlog and order promising.")
+    else:
+        k = ORD.kpis
+        st.caption(f"Order data as of {ORD.as_of:%d %b %Y}. OTIF over the last {settings.otif_months} months of shipped lines; "
+                   f"a line is on time when shipped by its date (+{settings.otif_tolerance_days} days) and in full when the whole quantity shipped.")
+        c = st.columns(6)
+        c[0].metric("OTIF vs confirmed", _pct(k["otif_confirmed_pct"]), f"target {settings.otif_target_pct:.0f}%", delta_color="off", **NOARROW)
+        c[1].metric("OTIF vs requested", _pct(k["otif_requested_pct"]), help="Customer view: against the date the customer asked for.")
+        c[2].metric("Fill rate (units)", _pct(k["fill_rate_pct"]))
+        c[3].metric("Open backlog", f"${k['backlog_value'] / 1000:,.0f}k", f"{k['open_lines']} lines", delta_color="off", **NOARROW)
+        c[4].metric("Past-due lines", k["past_due_lines"], f"${k['past_due_value'] / 1000:,.0f}k", delta_color="off", **NOARROW)
+        c[5].metric("Lines at risk", k["at_risk_lines"], f"${k['at_risk_value'] / 1000:,.0f}k", delta_color="off", **NOARROW)
+
+        st.subheader("Order promising")
+        basis = ("only firm and released supply inside the frozen zone, all supply after it"
+                 if str(settings.atp_basis).lower() != "plan" else "all supply in the plan")
+        st.caption(f"Open lines are taken in order of their confirmed date and allocated against finished-goods stock and "
+                   f"supply ({basis}). *Promise month* uses that basis; *if firmed* assumes every planned order is firmed.")
+        status_icon = {"Can be promised": "🟢", "Past due, stock available": "🟠", "Needs a planned order firmed": "🟠", "Late": "🔴"}
+        opn = ORD.open_lines.copy()
+        opn.insert(0, "", opn["promise_status"].map(status_icon))
+        opn["promise_month"] = opn["promise_month"].map(_mon)
+        opn["promise_month_if_firmed"] = opn["promise_month_if_firmed"].map(_mon)
+        st.dataframe(opn, hide_index=True, width="stretch",
+                     column_config={"value": st.column_config.NumberColumn("value", format="$%,.0f"),
+                                    "open_qty": st.column_config.NumberColumn("open qty", format="localized"),
+                                    "order_date": st.column_config.DateColumn("ordered"),
+                                    "requested_date": st.column_config.DateColumn("requested"),
+                                    "confirmed_date": st.column_config.DateColumn("confirmed"),
+                                    "action": st.column_config.TextColumn(width="large")})
+
+        st.subheader("Delivery performance by month")
+        if len(ORD.otif_month):
+            st.plotly_chart(otif_chart(ORD.otif_month), width="stretch")
+            st.caption("OTIF vs confirmed measures whether we keep our promises; vs requested whether we meet what the "
+                       "customer asked for. The gap between them is the cost of quoting later dates.")
+        g1, g2 = st.columns(2)
+        pct_cfg = {c: st.column_config.NumberColumn(c.replace("_pct", " %").replace("_", " "), format="%.1f%%")
+                   for c in ["otif_requested_pct", "otif_confirmed_pct", "on_time_pct", "in_full_pct", "fill_rate_pct"]}
+        money = {"backlog_value": st.column_config.NumberColumn("backlog", format="$%,.0f")}
+        with g1:
+            st.subheader("By customer")
+            st.dataframe(ORD.by_customer, hide_index=True, width="stretch", column_config={**pct_cfg, **money})
+        with g2:
+            st.subheader("By item")
+            st.dataframe(ORD.by_item, hide_index=True, width="stretch", column_config={**pct_cfg, **money})
+        with st.expander("Late and short shipped lines"):
+            ls = ORD.lines[(ORD.lines["status"] == "shipped") & (ORD.lines["otif_confirmed"] == False)]  # noqa: E712
+            st.dataframe(ls.drop(columns=["price"], errors="ignore"), hide_index=True, width="stretch")
+
+# ---------- KPIs ----------
+with tabs[7]:
+    if ORD is not None and len(ORD.otif_month):
+        st.subheader("Customer service")
+        c = st.columns(4)
+        c[0].metric("OTIF vs confirmed", _pct(ORD.kpis["otif_confirmed_pct"]), f"target {settings.otif_target_pct:.0f}%", delta_color="off", **NOARROW)
+        c[1].metric("OTIF vs requested", _pct(ORD.kpis["otif_requested_pct"]))
+        c[2].metric("Fill rate", _pct(ORD.kpis["fill_rate_pct"]))
+        c[3].metric("Lines confirmed later than requested", _pct(ORD.kpis["confirmed_later_pct"]),
+                    help="Order-promising pressure: how often the confirmed date is later than the customer asked for.")
+        st.plotly_chart(otif_chart(ORD.otif_month, 280), width="stretch")
     st.subheader(f"Forecast bias, last {settings.bias_months} months (lag 1)")
     bs, bd = r.bias_summary, r.bias_detail
     if bs.empty:
@@ -508,8 +605,54 @@ with tabs[6]:
                      column_config={"net_attainment_pct": st.column_config.NumberColumn("net", format="%.1f%%"),
                                     "absolute_attainment_pct": st.column_config.NumberColumn("absolute", format="%.1f%%")})
 
+
+# ---------- Data health ----------
+with tabs[8]:
+    dh, hk = r.data_health, r.health_kpis or {}
+    st.caption("Checks on the master and transaction data the plan depends on. Score = checks passed, weighted by "
+               "severity (High 3, Medium 2, Low 1). Each failed check has a fix in SAP / IBP and an owner.")
+    c = st.columns(4)
+    c[0].metric("Planning data health", _pct(hk.get("score")))
+    c[1].metric("Checks passed", f"{hk.get('passed', 0)} of {hk.get('checks', 0)}")
+    c[2].metric("High-severity checks failing", hk.get("failed_high", 0))
+    c[3].metric("Records to fix", hk.get("records", 0))
+    if dh is not None and len(dh):
+        area = dh.groupby("area").agg(checks=("check_id", "size"), passed=("status", lambda x: (x == "Pass").sum())).reset_index()
+        fig = go.Figure()
+        fig.add_trace(go.Bar(y=area["area"], x=area["passed"], orientation="h", name="Pass", marker_color=GREEN,
+                             hovertemplate="%{y}: %{x} passed<extra></extra>"))
+        fig.add_trace(go.Bar(y=area["area"], x=area["checks"] - area["passed"], orientation="h", name="Fix", marker_color=AMBER,
+                             hovertemplate="%{y}: %{x} to fix<extra></extra>"))
+        st.plotly_chart(_fig_layout(fig, 60 + 40 * len(area), barmode="stack", xaxis_title="checks"), width="stretch")
+        only = st.toggle("Failed checks only", False)
+        view = dh[dh["status"] == "Fix"] if only else dh
+        view = view.assign(**{"": view["status"].map({"Pass": "✅", "Fix": "🔧"})})
+        st.dataframe(view[[""] + [c for c in dh.columns]], hide_index=True, width="stretch",
+                     column_config={"why_it_matters": st.column_config.TextColumn(width="medium"),
+                                    "fix": st.column_config.TextColumn(width="large")})
+
+# ---------- Supply review ----------
+with tabs[9]:
+    rv = r.review
+    st.caption("An agenda for the cross-functional supply review, built from the plan, the order book and the data "
+               "checks: one section per function, each item with the decision needed.")
+    if rv is None or not len(rv):
+        st.info("No agenda items.")
+    else:
+        groups = [g for g in GROUPS if g in set(rv["group"])]
+        pick = st.multiselect("Functions", groups, groups)
+        for g in pick:
+            x = rv[rv["group"] == g]
+            with st.expander(f"{g} ({len(x)} items)", expanded=g in ("Customer service", "Manufacturing")):
+                for it in x.itertuples():
+                    st.markdown(f"**{it.topic}**: {it.detail}  \n<span style='color:#56655F'>Decision: {it.decision_needed}</span>",
+                                unsafe_allow_html=True)
+        md = agenda_markdown(rv[rv["group"].isin(pick or groups)], f"Supply review, forecast {r.version}")
+        st.download_button("Agenda as text (Markdown)", md.encode(), "supply_review_agenda.md",
+                           help="Paste into an e-mail or Teams post before the meeting.")
+
 # ---------- Data check ----------
-with tabs[7]:
+with tabs[10]:
     if issues:
         st.dataframe(pd.DataFrame([i.as_dict() for i in issues]), hide_index=True, width="stretch")
     else:
@@ -529,15 +672,19 @@ with tabs[7]:
                                     "lost_qty": st.column_config.NumberColumn("lost (est.)", format="localized"),
                                     "capped": st.column_config.CheckboxColumn("capped at 3×")})
     with st.expander("Loaded tables"):
-        for name in ["items", "bom", "work_centers", "routings", "supply_orders", "sales_orders"]:
+        for name in ["items", "bom", "work_centers", "routings", "supply_orders", "sales_orders", "order_lines"]:
             st.caption(name)
             st.dataframe(data.table(name), hide_index=True, width="stretch")
 
 # ---------- Export ----------
-with tabs[8]:
+with tabs[11]:
     st.write("Reports use the plan exactly as shown, including any what-if changes in the sidebar.")
     stem = f"plan_{r.version}{'_whatif' if changed else ''}"
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     c1.download_button("Excel workbook (all views)", excel_report(r), f"{stem}.xlsx", width="stretch", type="primary")
     c2.download_button("PDF: S&OP supply review", pdf_report(r), f"{stem}.pdf", width="stretch", type="primary")
-    c3.download_button("Input data as a workbook", template_bytes(data), "planning_data.xlsx", width="stretch")
+    c3.download_button("IBP key figures / Power BI", ibp_workbook(r, r.orders, (r.data_health, r.health_kpis), r.review),
+                       f"{stem}_ibp.xlsx", width="stretch",
+                       help="The plan as IBP key figures (product, location, month, key figure) plus a planning view, "
+                            "order lines, OTIF, data health and the review agenda, all as Excel Tables for Power BI.")
+    c4.download_button("Input data as a workbook", template_bytes(data), "planning_data.xlsx", width="stretch")

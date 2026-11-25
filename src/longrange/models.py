@@ -14,7 +14,7 @@ import pandas as pd
 @dataclass(frozen=True)
 class Column:
     name: str
-    kind: str  # "text", "number", "month"
+    kind: str  # "text", "number", "month", "date"
     required: bool = False
     default: object = None
     help: str = ""
@@ -130,6 +130,22 @@ SCHEMA: dict[str, dict] = {
             _c("note", default="", help="Owner or reason, e.g. 'Marketing: spring sale extension'"),
         ],
     },
+    "order_lines": {
+        "required": False,
+        "help": "Customer order lines, open and shipped (last 12 months): for OTIF, fill rate, backlog and "
+                "order promising. Open lines here do not change the plan; sales_orders still drive netting.",
+        "columns": [
+            _c("order_id", required=True), _c("line", "number", default=10.0),
+            _c("customer", default=""), _c("item_id", required=True), _c("qty", "number", required=True),
+            _c("unit_price", "number", default=0.0, help="Selling price per unit; blank = unit cost"),
+            _c("order_date", "date", default=None), _c("requested_date", "date", required=True,
+                                                        help="Date the customer asked for"),
+            _c("confirmed_date", "date", default=None, help="Date we committed to (schedule-line confirmation)"),
+            _c("shipped_date", "date", default=None, help="Blank while the line is open"),
+            _c("shipped_qty", "number", default=0.0),
+            _c("status", default="open", help="open, shipped or cancelled"),
+        ],
+    },
     "production_actuals": {
         "required": False,
         "help": "Planned vs actual production by item and month, for attainment KPIs.",
@@ -140,8 +156,8 @@ SCHEMA: dict[str, dict] = {
 
 
 def empty_table(sheet: str) -> pd.DataFrame:
-    return pd.DataFrame({c.name: pd.Series(dtype="float64" if c.kind == "number" else "object")
-                         for c in SCHEMA[sheet]["columns"]})
+    kinds = {"number": "float64", "date": "datetime64[ns]"}
+    return pd.DataFrame({c.name: pd.Series(dtype=kinds.get(c.kind, "object")) for c in SCHEMA[sheet]["columns"]})
 
 
 @dataclass
@@ -179,6 +195,11 @@ class Settings:
     sl_cx: float = 0.93
     sl_cy: float = 0.92
     sl_cz: float = 0.90
+    orders_as_of: str | None = None        # 'YYYY-MM-DD' for order KPIs; default = the day before plan_start
+    otif_target_pct: float = 95.0
+    otif_tolerance_days: int = 0           # a line shipped up to N days after its date still counts as on time
+    otif_months: int = 6                   # look-back for OTIF and fill rate
+    atp_basis: str = "firm_in_frozen"      # firm_in_frozen = only firm and released supply inside the frozen zone; plan = all supply
 
     @classmethod
     def from_table(cls, df: pd.DataFrame | None) -> Settings:
@@ -222,6 +243,7 @@ class PlanningData:
     sales_history: pd.DataFrame = field(default_factory=lambda: empty_table("sales_history"))
     sales_orders: pd.DataFrame = field(default_factory=lambda: empty_table("sales_orders"))
     supply_orders: pd.DataFrame = field(default_factory=lambda: empty_table("supply_orders"))
+    order_lines: pd.DataFrame = field(default_factory=lambda: empty_table("order_lines"))
     production_actuals: pd.DataFrame = field(default_factory=lambda: empty_table("production_actuals"))
     events: pd.DataFrame = field(default_factory=lambda: empty_table("events"))
     settings: Settings = field(default_factory=Settings)

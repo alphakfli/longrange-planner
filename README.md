@@ -22,10 +22,17 @@ and action messages. It runs on Excel or CSV data, so you can use it before, bes
 | Action messages | New planned orders, plus Cancel / Reduce suggestions for existing orders the new forecast no longer needs |
 | Capacity | Hours required vs available per work center and month, with calendars, efficiency and setup time; breakdown by item |
 | Inventory | Projected stock, weeks of coverage, inventory value, and E&O risk against shelf life |
-| KPIs | Net attainment, absolute attainment, capacity utilization |
+| KPIs | Net attainment, absolute attainment, capacity utilization, OTIF, fill rate, forecast bias |
 | Alerts | Shortages, below safety stock, late releases, capacity overloads, E&O risk, order changes, big forecast changes, attainment misses, data gaps; each with a suggested action |
 | What-if | Demand up or down, include proposed events, shifts per work center, move items to another line, outsource items; the whole plan recalculates instantly |
-| Reports | Excel workbook with every view, and a PDF S&OP supply review pack |
+| Order management | OTIF against requested and confirmed dates, fill rate, open backlog and past-due lines by customer and item; order promising (available to promise) on firm supply and on the full plan, naming the planned order to firm when a promise is at risk |
+| Planning data health | Sixteen governance checks on material master, demand, supply and order data, each with the records affected, why it matters, the fix in SAP / IBP and an owner; a weighted health score |
+| Supply review | A cross-functional agenda built from the plan: manufacturing, procurement, logistics, customer service, business management and supply chain, each item with the decision needed |
+| Reports | Excel workbook with every view, a PDF S&OP supply review pack, and an IBP key-figure / Power BI workbook (every output as an Excel Table) |
+
+| Order management | Planning data health |
+| --- | --- |
+| ![Order management](docs/images/orders.png) | ![Planning data health](docs/images/data_health.png) |
 
 ## Quick start
 
@@ -98,7 +105,7 @@ open("plan.pdf", "wb").write(pdf_report(result))
 
 One workbook with a sheet per table, or one CSV per table. Only `items` and `forecast` are required;
 each extra table adds a view. Run `longrange template` for a template with every column explained, and see
-[docs/data-format.md](docs/data-format.md).
+[docs/data-format.md](docs/data-format.md). Where each table comes from in SAP ERP and SAP IBP, and which IBP key figure each output matches: [docs/sap-ibp-mapping.md](docs/sap-ibp-mapping.md).
 
 | Table | Purpose |
 | --- | --- |
@@ -139,7 +146,7 @@ src/longrange/
   cli.py               command line
 app/streamlit_app.py   dashboard
 tests/                 pytest suite
-docs/                  data format, planning logic, roadmap
+docs/                  data format, planning logic, SAP / IBP mapping, roadmap
 ```
 
 ## Roadmap

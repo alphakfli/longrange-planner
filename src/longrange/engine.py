@@ -72,6 +72,10 @@ class PlanResult:
     attainment_item: pd.DataFrame
     alerts: pd.DataFrame
     issues: list[str]
+    orders: object = None              # orders.OrderResult, when order_lines are loaded
+    data_health: pd.DataFrame | None = None
+    health_kpis: dict | None = None
+    review: pd.DataFrame | None = None
 
     def summary(self) -> dict:
         fg = set(self.items.loc[self.items["item_type"] == "FG", "item_id"])
@@ -100,7 +104,17 @@ class PlanResult:
             "eo_risk_items": int(inv[inv["status"].isin(["E&O risk", "No demand"])]["item_id"].nunique()),
             "net_attainment_pct": float(att["actual_qty"].sum() / att["planned_qty"].sum() * 100) if len(att) else float("nan"),
             "absolute_attainment_pct": float(att["capped_actual"].sum() / att["planned_qty"].sum() * 100) if len(att) else float("nan"),
+            **self._service_summary(),
         }
+
+    def _service_summary(self) -> dict:
+        nan = float("nan")
+        k = self.orders.kpis if self.orders is not None else {}
+        h = self.health_kpis or {}
+        return {"otif_confirmed_pct": k.get("otif_confirmed_pct", nan), "otif_requested_pct": k.get("otif_requested_pct", nan),
+                "fill_rate_pct": k.get("fill_rate_pct", nan), "backlog_value": k.get("backlog_value", 0.0),
+                "past_due_lines": k.get("past_due_lines", 0), "at_risk_lines": k.get("at_risk_lines", 0),
+                "data_health_score": h.get("score", nan)}
 
 
 def _series(df: pd.DataFrame, months: list[str], value: str = "qty") -> dict[str, np.ndarray]:
@@ -209,10 +223,21 @@ def run_plan(data: PlanningData, version: str | None = None, scenario: Scenario 
                           safety=safety, issues=issues, settings=s, events=events,
                           event_impact=impact, bias_summary=bias_sum, stockouts=stockouts,
                           baseline_gaps=gaps)
-    return PlanResult(settings=s, scenario=sc, months=months, version=current, previous_version=prev, items=items,
+    res = PlanResult(settings=s, scenario=sc, months=months, version=current, previous_version=prev, items=items,
                       safety=safety, time_phased=net.time_phased, planned_orders=net.planned_orders,
                       action_messages=net.action_messages, supply=net.supply, capacity=load, capacity_detail=detail,
                       utilization=util, inventory=inv, forecast_bridge=bridge, baseline_forecast=baseline_fc,
                       planned_forecast=fc, event_impact=impact, events=events, segments=segments, accuracy=acc, bias_detail=bias_det, bias_summary=bias_sum, stockouts=stockouts, baseline_gaps=gaps, stat_forecast=stat_fc,
                       stat_details=stat_details, attainment_month=att_m, attainment_item=att_i, alerts=alerts,
                       issues=issues)
+    # Order management, planning data health and the cross-functional supply review
+    from longrange.data_health import data_health
+    from longrange.orders import order_management
+    from longrange.planning.alerts import service_alerts
+    from longrange.review import supply_review
+
+    res.orders = order_management(res, data.order_lines)
+    res.data_health, res.health_kpis = data_health(data, res, res.orders)
+    res.alerts = service_alerts(res)
+    res.review = supply_review(res, res.orders, (res.data_health, res.health_kpis))
+    return res

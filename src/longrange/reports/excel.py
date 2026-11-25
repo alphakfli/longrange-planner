@@ -65,6 +65,11 @@ def excel_report(r: PlanResult) -> bytes:
         ("Finished goods with a shortage", s["fg_shortage_items"]), ("Items with E&O risk", s["eo_risk_items"]),
         ("Net attainment, last 3 months", None if np.isnan(s["net_attainment_pct"]) else round(s["net_attainment_pct"], 1)),
         ("Absolute attainment, last 3 months", None if np.isnan(s["absolute_attainment_pct"]) else round(s["absolute_attainment_pct"], 1)),
+        ("OTIF vs confirmed date, %", None if np.isnan(s["otif_confirmed_pct"]) else round(s["otif_confirmed_pct"], 1)),
+        ("OTIF vs requested date, %", None if np.isnan(s["otif_requested_pct"]) else round(s["otif_requested_pct"], 1)),
+        ("Fill rate, %", None if np.isnan(s["fill_rate_pct"]) else round(s["fill_rate_pct"], 1)),
+        ("Open order lines at risk", s["at_risk_lines"]), ("Past-due order lines", s["past_due_lines"]),
+        ("Planning data health, %", None if np.isnan(s["data_health_score"]) else round(s["data_health_score"], 1)),
     ]
     for i, (k, v) in enumerate(rows, start=4):
         ws.cell(i, 1, k).font = Font(bold=True)
@@ -188,6 +193,16 @@ def excel_report(r: PlanResult) -> bytes:
                number_formats={"net_attainment_pct": '0.0"%"', "absolute_attainment_pct": '0.0"%"'})
         _sheet(wb, "Attainment by item", r.attainment_item,
                number_formats={"net_attainment_pct": '0.0"%"', "absolute_attainment_pct": '0.0"%"'})
+    if r.orders is not None:
+        pct = {c: '0.0"%"' for c in ["otif_requested_pct", "otif_confirmed_pct", "on_time_pct", "in_full_pct", "fill_rate_pct"]}
+        _sheet(wb, "Open order lines", r.orders.open_lines, number_formats={"value": "$#,##0"}, widths={"action": 70})
+        _sheet(wb, "OTIF by month", r.orders.otif_month, number_formats=pct)
+        _sheet(wb, "OTIF by customer", r.orders.by_customer, number_formats={**pct, "backlog_value": "$#,##0"})
+        _sheet(wb, "OTIF by item", r.orders.by_item, number_formats={**pct, "backlog_value": "$#,##0"})
+    if r.data_health is not None:
+        _sheet(wb, "Data health", r.data_health, widths={"why_it_matters": 60, "fix": 70, "check": 50})
+    if r.review is not None and len(r.review):
+        _sheet(wb, "Supply review agenda", r.review, widths={"detail": 70, "decision_needed": 60, "topic": 40})
     _sheet(wb, "Settings", r.settings.to_table())
 
     for w in wb.worksheets:

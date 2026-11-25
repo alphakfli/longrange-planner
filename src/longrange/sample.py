@@ -34,6 +34,68 @@ FG = [
 ]
 
 
+CUSTOMERS = ["Retail DC East", "Retail DC West", "E-commerce", "Wholesale UK", "Pharmacy Group North", "Spa Distribution"]
+# open order lines: item, customer, qty, requested, confirmed (None = not confirmed yet)
+OPEN_LINES = [
+    ("FG-1001", "Retail DC East", 18000, "2026-12-03", "2026-12-03"),
+    ("FG-1001", "Pharmacy Group North", 9000, "2026-12-01", "2026-12-08"),
+    ("FG-1001", "E-commerce", 8000, "2026-12-10", "2026-12-10"),
+    ("FG-1001", "Spa Distribution", 6000, "2026-11-20", "2026-11-26"),
+    ("FG-1001", "E-commerce", 20000, "2027-01-12", "2027-01-12"),
+    ("FG-1001", "Retail DC West", 15000, "2027-01-05", "2027-01-08"),
+    ("FG-1002", "Retail DC East", 16000, "2026-12-02", "2026-12-02"),
+    ("FG-1002", "Wholesale UK", 8000, "2026-12-09", "2026-12-09"),
+    ("FG-1002", "Pharmacy Group North", 6000, "2026-12-15", None),
+    ("FG-1003", "Wholesale UK", 9000, "2026-12-01", "2026-12-04"),
+    ("FG-1003", "Pharmacy Group North", 6000, "2026-12-10", "2026-12-10"),
+    ("FG-1003", "E-commerce", 4000, "2026-12-16", "2026-12-16"),
+    ("FG-1004", "Retail DC West", 14000, "2026-12-07", "2026-12-07"),
+    ("FG-1004", "Spa Distribution", 8000, "2026-11-12", "2026-11-18"),
+    ("FG-1004", "Retail DC East", 6000, "2026-10-20", "2026-10-27"),
+]
+# on-time share per item for shipped history; FG-1005 is made by a contract manufacturer
+ON_TIME = {"FG-1001": .96, "FG-1002": .94, "FG-1003": .86, "FG-1004": .93, "FG-1005": .80, "FG-1006": .97}
+PRICE_MARKUP = 2.8
+
+
+def _order_lines(items: pd.DataFrame, sales_history: pd.DataFrame) -> pd.DataFrame:
+    """Customer order lines: open lines that add up to sales_orders, and six months of shipped lines built from
+    sales history (FG-1003's October stock-out shows as short, late shipments)."""
+    rng = np.random.default_rng(7)                      # own generator: the rest of the sample is unchanged
+    price = {r.item_id: round(r.unit_cost * PRICE_MARKUP, 2) for r in items.itertuples()}
+    rows, n = [], 0
+    for item, cust, qty, req, conf in OPEN_LINES:
+        n += 1
+        rq = pd.Timestamp(req)
+        rows.append(dict(order_id=f"SO-{260000 + n}", line=10, customer=cust, item_id=item, qty=qty, unit_price=price[item],
+                         order_date=rq - pd.Timedelta(days=int(rng.integers(10, 35))), requested_date=rq,
+                         confirmed_date=pd.Timestamp(conf) if conf else pd.NaT, shipped_date=pd.NaT, shipped_qty=0.0,
+                         status="open"))
+    asof = pd.Timestamp(PLAN_START + "-01") - pd.Timedelta(days=1)
+    hist = sales_history[(sales_history["month"] >= add_months(PLAN_START, -6)) & sales_history["item_id"].str.startswith("FG")]
+    for h in hist.itertuples():
+        out = h.stockout_days > 0
+        ordered_total = h.qty * 31 / (31 - h.stockout_days) if out else h.qty
+        shares = rng.dirichlet(np.ones(6))
+        start = pd.Timestamp(h.month + "-01")
+        for sh in shares:
+            n += 1
+            q = round(ordered_total * sh, -2)
+            if q <= 0:
+                continue
+            rq = start + pd.Timedelta(days=int(rng.integers(0, 27)))
+            conf = rq + pd.Timedelta(days=int(rng.integers(3, 11))) if rng.random() < (.25 if h.item_id == "FG-1005" else .07) else rq
+            p_on = .3 if out else ON_TIME[h.item_id]
+            late = 0 if rng.random() < p_on else int(rng.integers(1, 9))
+            shipped = min(conf + pd.Timedelta(days=late - int(rng.integers(0, 3)) if late == 0 else late), asof)
+            sq = q * (31 - h.stockout_days) / 31 if out else (q if rng.random() > .03 else round(q * rng.uniform(.9, .98), -1))
+            rows.append(dict(order_id=f"SO-{260000 + n}", line=10, customer=CUSTOMERS[int(rng.integers(0, 6))],
+                             item_id=h.item_id, qty=q, unit_price=price[h.item_id],
+                             order_date=rq - pd.Timedelta(days=int(rng.integers(10, 35))), requested_date=rq,
+                             confirmed_date=conf, shipped_date=shipped, shipped_qty=round(sq, 0), status="shipped"))
+    return pd.DataFrame(rows)
+
+
 def _season(month: str, new: bool) -> float:
     return (SEASON_NEW if new else SEASON_OLD)[int(month[5:7])]
 
@@ -185,4 +247,4 @@ def build_sample() -> PlanningData:
     return PlanningData(items=items, bom=bom, work_centers=work_centers, calendar=calendar, routings=routings,
                         forecast=forecast, sales_history=sales_history, sales_orders=sales_orders,
                         supply_orders=supply_orders, production_actuals=production_actuals, events=events,
-                        settings=settings)
+                        order_lines=_order_lines(items, sales_history), settings=settings)

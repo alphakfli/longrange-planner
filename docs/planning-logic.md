@@ -179,9 +179,74 @@ Each is fitted on all but the last 6 months and scored by WMAPE on those 6; the 
 Note: if a promotion moved month (for example a sale moving from November to April), history before the move
 will mislead seasonal methods. Review the baseline before using it.
 
+## 8. Order management
+
+Optional `order_lines` table: open and shipped customer order lines. It does not change the plan (`sales_orders`
+still drive netting); it measures delivery and promises dates.
+
+**Delivery performance**, over the last `otif_months` calendar months of shipped lines:
+
+```
+on time (confirmed) = shipped_date ≤ confirmed_date + otif_tolerance_days     (requested date if not confirmed)
+on time (requested) = shipped_date ≤ requested_date + otif_tolerance_days
+in full             = shipped_qty ≥ qty
+OTIF                = share of lines both on time and in full
+fill rate           = Σ shipped_qty ÷ Σ qty
+```
+
+OTIF against the confirmed date measures whether we keep our promises; against the requested date whether we
+meet what the customer asked for. Cancelled lines are left out.
+
+**Order promising (available to promise, monthly buckets).** Open lines are sorted by committed date and
+allocated, one after another, against finished-goods stock plus supply:
+
+```
+cumulative available(m) = on_hand + Σ supply(1..m)
+a line is promised in the first month m where cumulative available(m) − quantity already promised ≥ its open qty
+```
+
+With `atp_basis = firm_in_frozen` (default), supply inside the frozen zone is firm and released orders only, and
+every receipt after it. With `plan`, every receipt counts. Each line is promised on both bases:
+
+| Status | Rule |
+| --- | --- |
+| Can be promised | Promise month (firm basis) ≤ the month of the confirmed date |
+| Past due, stock available | Confirmed date passed, but stock covers it now |
+| Needs a planned order firmed | Late on the firm basis, on time if planned orders are firmed (the action names the planned order) |
+| Late | Late even with every planned order firmed |
+
+A line before the plan start counts in the first month. `orders_as_of` (default: the day before `plan_start`)
+decides what is past due.
+
+## 9. Planning data health
+
+Sixteen checks on the data the plan depends on, each with records affected, why it matters, the fix in SAP or IBP
+and the usual owner: routings, BOMs, vendors, lead times, standard cost and lot sizes (material master); fixed
+safety stock far from the calculated level; forecast completeness, duplicates, gaps and bias (demand); past-due
+supply orders; open order lines without a confirmation, more than 30 days past due, or confirmed before they were
+ordered; gaps in sales history.
+
+```
+health score = Σ weight of passed checks ÷ Σ weight of all checks      (High 3, Medium 2, Low 1)
+```
+
+## 10. Supply review agenda
+
+Built every run, one section per function:
+
+| Function | Items |
+| --- | --- |
+| Manufacturing | The next five work-center months above the warning level; frozen orders to review; attainment misses |
+| Procurement | Late releases, orders to release now, shortages of bought items |
+| Logistics | Lines to ship in the next 14 days by customer; finished goods due in from contract manufacturers |
+| Customer service | Lines at risk with the action; past-due backlog; the three customers with the lowest OTIF |
+| Business management | Inventory value and E&O; forecast changes, bias and baseline gaps; proposed events |
+| Supply chain | Data-health score and failed high-severity checks |
+
 ## Known simplifications
 
 - Monthly buckets: lead times under about two weeks round to zero months.
 - Safety lead time is stored but not yet applied to dates (most values are below one bucket).
 - Capacity is infinite during netting; levelling is left to the planner, supported by the what-if controls.
 - One location. Multi-site planning is on the roadmap.
+- Order promising works in monthly buckets: it gives the month a line can ship, not the day.
